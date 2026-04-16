@@ -1,0 +1,155 @@
+# Release Pipeline — publish to PyPI and create GitHub Release
+#
+# Triggers:
+#   - Push a tag matching v*.*.* (e.g. v0.1.0, v0.2.0a1)
+#   - Manual dispatch with version input
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to release (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # 1. Quality gate
+  # ────────────────────────────────────────────────────────────
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Parse version
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          if [[ "$VERSION" == *a* ]] || [[ "$VERSION" == *b* ]] || [[ "$VERSION" == *dev* ]] || [[ "$VERSION" == *rc* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install & lint
+        run: |
+          pip install -e . ruff black
+          ruff check src/
+          black --check src/
+
+      - name: Import check
+        run: python -c "from fluid_provider_sdk import BaseProvider, ApplyResult, ProviderError; print('OK')"
+
+      - name: Verify version matches tag
+        run: |
+          PKG_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          TAG_VERSION="${{ steps.meta.outputs.version }}"
+          TAG_BASE=$(echo "$TAG_VERSION" | sed 's/[ab].*//' | sed 's/\.dev.*//' | sed 's/rc.*//')
+          if [ "$PKG_VERSION" != "$TAG_BASE" ] && [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch: pyproject.toml=${PKG_VERSION}, tag=${TAG_VERSION}"
+            exit 1
+          fi
+
+  # ────────────────────────────────────────────────────────────
+  # 2. Build
+  # ────────────────────────────────────────────────────────────
+  build:
+    name: Build Package
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+
+      - name: Smoke test
+        run: |
+          python -m venv /tmp/test-install
+          /tmp/test-install/bin/pip install dist/*.whl
+          /tmp/test-install/bin/python -c "from fluid_provider_sdk import BaseProvider; print('OK')"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: dist/
+          retention-days: 30
+
+  # ────────────────────────────────────────────────────────────
+  # 3. Publish to PyPI
+  # ────────────────────────────────────────────────────────────
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [quality-gate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/fluid-provider-sdk
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ────────────────────────────────────────────────────────────
+  # 4. GitHub Release
+  # ────────────────────────────────────────────────────────────
+  github-release:
+    name: GitHub Release
+    needs: [quality-gate, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: "fluid-provider-sdk ${{ needs.quality-gate.outputs.version }}"
+          prerelease: ${{ needs.quality-gate.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
+          files: dist/*

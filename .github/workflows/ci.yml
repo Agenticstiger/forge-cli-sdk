@@ -1,0 +1,67 @@
+# CI — runs on every PR and push to main
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install tools
+        run: pip install ruff black
+      - name: Ruff
+        run: ruff check src/
+      - name: Black
+        run: black --check src/
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package
+        run: pip install -e .
+      - name: Import check
+        run: python -c "from fluid_provider_sdk import BaseProvider, ApplyResult, ProviderError; print('OK')"
+      - name: Type stub check
+        run: python -c "import fluid_provider_sdk; import pathlib; assert (pathlib.Path(fluid_provider_sdk.__file__).parent / 'py.typed').exists(), 'py.typed missing'"
+
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+      - name: Smoke test
+        run: |
+          python -m venv /tmp/test-install
+          /tmp/test-install/bin/pip install dist/*.whl
+          /tmp/test-install/bin/python -c "from fluid_provider_sdk import BaseProvider; print('OK')"
