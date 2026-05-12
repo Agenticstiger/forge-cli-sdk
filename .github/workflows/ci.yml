@@ -1,4 +1,12 @@
-# CI — runs on every PR and push to main
+# CI — runs on every PR and push to main.
+#
+# Three gates:
+#   1. lint     — ruff + black (3.12 only; format is version-independent)
+#   2. test     — pytest matrix on 3.9 / 3.10 / 3.11 / 3.12 / 3.13
+#   3. build    — `python -m build` + twine check + clean-venv smoke install
+#
+# A clean PR ships when all three are green.
+
 name: CI
 
 on:
@@ -22,30 +30,36 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install tools
+      - name: Install lint tools
         run: pip install ruff black
       - name: Ruff
-        run: ruff check src/
+        run: ruff check src/ tests/
       - name: Black
-        run: black --check src/
+        run: black --check src/ tests/
 
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install package
-        run: pip install -e .
-      - name: Import check
-        run: python -c "from fluid_provider_sdk import BaseProvider, ApplyResult, ProviderError; print('OK')"
-      - name: Type stub check
-        run: python -c "import fluid_provider_sdk; import pathlib; assert (pathlib.Path(fluid_provider_sdk.__file__).parent / 'py.typed').exists(), 'py.typed missing'"
+      - name: Install with dev extras
+        run: pip install -e ".[dev]"
+      - name: Pytest
+        run: pytest tests/ -v
+      # Public-API guarantees beyond what pytest catches:
+      #   - import path is `fluid_sdk` (not the dist name)
+      #   - PEP 561 marker ships in the installed package
+      - name: Public-API smoke
+        run: |
+          python -c "from fluid_sdk import BasePlugin, CustomScaffold, Validator, PluginAction, ExecutionResult, PluginError; print('imports OK')"
+          python -c "import fluid_sdk, pathlib; assert (pathlib.Path(fluid_sdk.__file__).parent / 'py.typed').exists(), 'py.typed missing'"
 
   build:
     name: Build Check
@@ -55,13 +69,15 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Build
+      - name: Build sdist + wheel
         run: |
           pip install build twine
           python -m build
           twine check dist/*
-      - name: Smoke test
+      # Re-install the built wheel into a fresh venv with no source on PYTHONPATH,
+      # so we catch packaging mistakes (missing files, wrong top_level.txt, etc.).
+      - name: Smoke install built wheel
         run: |
-          python -m venv /tmp/test-install
-          /tmp/test-install/bin/pip install dist/*.whl
-          /tmp/test-install/bin/python -c "from fluid_provider_sdk import BaseProvider; print('OK')"
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+          /tmp/clean/bin/python -c "from fluid_sdk import BasePlugin, CustomScaffold, Validator; print('OK')"

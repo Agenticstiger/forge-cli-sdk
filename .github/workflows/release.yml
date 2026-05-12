@@ -58,12 +58,15 @@ jobs:
 
       - name: Install & lint
         run: |
-          pip install -e . ruff black
+          pip install -e ".[dev]" ruff black
           ruff check src/
           black --check src/
 
+      - name: Run tests
+        run: pytest tests/ -v
+
       - name: Import check
-        run: python -c "from fluid_provider_sdk import BaseProvider, ApplyResult, ProviderError; print('OK')"
+        run: python -c "from fluid_sdk import BasePlugin, CustomScaffold, Validator, PluginAction, ExecutionResult, PluginError; print('OK')"
 
       - name: Verify version matches tag
         run: |
@@ -99,7 +102,7 @@ jobs:
         run: |
           python -m venv /tmp/test-install
           /tmp/test-install/bin/pip install dist/*.whl
-          /tmp/test-install/bin/python -c "from fluid_provider_sdk import BaseProvider; print('OK')"
+          /tmp/test-install/bin/python -c "from fluid_sdk import BasePlugin, CustomScaffold, Validator; print('OK')"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -118,7 +121,7 @@ jobs:
       id-token: write
     environment:
       name: pypi
-      url: https://pypi.org/p/fluid-provider-sdk
+      url: https://pypi.org/p/data-product-forge-sdk
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -149,7 +152,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: "fluid-provider-sdk ${{ needs.quality-gate.outputs.version }}"
+          name: "data-product-forge-sdk ${{ needs.quality-gate.outputs.version }}"
           prerelease: ${{ needs.quality-gate.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
           files: dist/*
