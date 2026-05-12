@@ -1,6 +1,6 @@
 # Architecture
 
-`fluid-sdk` is a universal, zero-dependency Python SDK for building FLUID plugins.
+`data-product-forge-sdk` (import path `fluid_sdk`) is a zero-dependency Python SDK for building `data-product-forge` plugins.
 This document explains the design — why it looks the way it does and how the pieces fit.
 
 ## Goals

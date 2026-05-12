@@ -47,7 +47,7 @@ build-backend = "setuptools.build_meta"
 name = "steward-validator"
 version = "0.1.0"
 requires-python = ">=3.9"
-dependencies = ["fluid-sdk>=1.0.0"]
+dependencies = ["data-product-forge-sdk>=0.9,<1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]

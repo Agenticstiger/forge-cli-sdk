@@ -1,4 +1,6 @@
-# `fluid-sdk` documentation
+# `data-product-forge-sdk` documentation
+
+> Distributed on PyPI as **`data-product-forge-sdk`**. Import path: **`fluid_sdk`**.
 
 ## Start here
 

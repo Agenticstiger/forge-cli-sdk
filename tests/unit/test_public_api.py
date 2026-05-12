@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as dist_version
+
+import pytest
+
 import fluid_sdk
 
 PROMISED_EXPORTS = {
@@ -63,3 +68,21 @@ def test_exports_match_all_strict() -> None:
     """No extras leak — only the promised exports."""
     extras = set(fluid_sdk.__all__) - PROMISED_EXPORTS
     assert not extras, f"Unexpected extras in fluid_sdk.__all__: {extras}"
+
+
+def test_sdk_version_matches_pyproject() -> None:
+    """``SDK_VERSION`` must equal the distribution version in pyproject.toml.
+
+    Two sources of truth (``src/fluid_sdk/version.py::SDK_VERSION`` and
+    ``[project.version]``) silently drift if not pinned. A user who reads
+    ``fluid_sdk.__version__`` should see the same value pip just resolved.
+    """
+    try:
+        installed = dist_version("data-product-forge-sdk")
+    except PackageNotFoundError:
+        # SDK not installed (e.g. tests run via PYTHONPATH from source) —
+        # skip rather than fail, since there's nothing to compare against.
+        pytest.skip("data-product-forge-sdk not installed as a distribution")
+    assert (
+        fluid_sdk.SDK_VERSION == installed
+    ), f"SDK_VERSION={fluid_sdk.SDK_VERSION!r} drifted from pyproject version {installed!r}"

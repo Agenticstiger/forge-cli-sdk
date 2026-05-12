@@ -187,7 +187,7 @@ When the fluid contract schema bumps (0.7.4 → 0.8 → …):
 
 - The SDK is updated to absorb the new shape in `ContractHelper.from_dict` paths.
 - The SDK's version is bumped.
-- Plugin authors pin `fluid-sdk>=X.Y.Z` and get the new parsing for free.
+- Plugin authors pin `data-product-forge-sdk>=X.Y.Z` and get the new parsing for free.
 - **Plugin code stays unchanged.**
 
 This is the entire reason `ContractHelper` exists.

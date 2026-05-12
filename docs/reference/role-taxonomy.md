@@ -1,6 +1,6 @@
 # Role taxonomy
 
-`fluid-sdk` ships four built-in plugin roles. Each is a thin subclass of `BasePlugin` that pins a `role` tag, sets role-appropriate capability defaults, and provides role-specific helpers. The four are summarised here.
+`data-product-forge-sdk` (import path `fluid_sdk`) ships four built-in plugin roles. Each is a thin subclass of `BasePlugin` that pins a `role` tag, sets role-appropriate capability defaults, and provides role-specific helpers. The four are summarised here.
 
 ## When to pick which
 

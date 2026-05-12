@@ -1,3 +1,7 @@
-"""SDK version — published independently of the FLUID CLI core."""
+"""SDK version — kept in sync with [project.version] in pyproject.toml.
 
-SDK_VERSION = "1.0.0"
+If you bump one, bump the other. The conformance test
+``tests/unit/test_public_api.py`` pins this invariant.
+"""
+
+SDK_VERSION = "0.9.0"

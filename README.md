@@ -1,14 +1,20 @@
-# fluid-sdk
+# data-product-forge-sdk
 
-**Build a FLUID plugin in 30 seconds. Get 15+ conformance tests for free.**
+**Build a `data-product-forge` plugin in 30 seconds. Get 15+ conformance tests for free.**
 
-Zero-dependency Python SDK for building plugins that extend the FLUID data-product CLI. Write a plugin once, plug it into the FLUID CLI via Python entry-points. Four built-in roles, one mental model.
+Zero-dependency Python SDK for building plugins that extend the `data-product-forge` (a.k.a. FLUID) CLI. Write a plugin once, plug it in via Python entry-points. Four built-in roles, one mental model.
 
 ```bash
-pip install fluid-sdk
+pip install data-product-forge-sdk
 ```
 
-That's the only dependency.
+```python
+from fluid_sdk import CustomScaffold, Validator, ContractHelper
+```
+
+> **Dual naming, on purpose.** PyPI distribution: `data-product-forge-sdk`. Import path: `fluid_sdk`. Same pattern as `pyyaml` ↔ `yaml`, `scikit-learn` ↔ `sklearn`. The PyPI name reflects the product brand; the import path stays short.
+
+Zero dependencies beyond the Python standard library.
 
 ## What can I build?
 
@@ -125,14 +131,14 @@ from fluid_sdk import (
 
 ## Why a separate SDK?
 
-The full FLUID CLI pulls ~40 transitive dependencies. As a plugin author, you don't need any of that — you only need:
+The full `data-product-forge` CLI pulls ~40 transitive dependencies. As a plugin author, you don't need any of that — you only need:
 
 - `BasePlugin` + the four role subclasses
 - Action / result / metadata / capabilities data types
 - `ContractHelper` for parsing fluid contracts
 - A test harness
 
-…all in pure Python stdlib. The end user installs the full CLI; you only need `fluid-sdk`. Faster `pip install`, no version-resolution headaches, your plugin works against multiple FLUID CLI versions.
+…all in pure Python stdlib. The end user installs the full CLI; you only need `data-product-forge-sdk`. Faster `pip install`, no version-resolution headaches, your plugin works against multiple `data-product-forge` CLI versions.
 
 ## License
 

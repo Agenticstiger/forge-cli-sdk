@@ -22,10 +22,10 @@ hello-scaffold/
 ## Step 1 — Install the SDK
 
 ```bash
-pip install fluid-sdk
+pip install data-product-forge-sdk
 ```
 
-That's the only dependency. Zero transitive deps.
+That's the only dependency. Zero transitive deps. Import path is `fluid_sdk` (see the README for the dual-naming rationale).
 
 ## Step 2 — Make the package skeleton
 
@@ -45,7 +45,7 @@ build-backend = "setuptools.build_meta"
 name = "hello-scaffold"
 version = "0.1.0"
 requires-python = ">=3.9"
-dependencies = ["fluid-sdk>=1.0.0"]
+dependencies = ["data-product-forge-sdk>=0.9,<1"]
 
 [project.entry-points."fluid_build.custom_scaffolds"]
 hello = "hello_scaffold.scaffold:HelloScaffold"
