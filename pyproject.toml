@@ -7,7 +7,7 @@ name = "data-product-forge-sdk"
 version = "0.9.0"
 description = "Zero-dependency SDK for building data-product-forge plugins — custom scaffolds, validators, cloud-infrastructure providers, catalog adapters. Import as `fluid_sdk`."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "data-product-forge Community"},
@@ -28,11 +28,11 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: Software Development :: Code Generators",
     "Typing :: Typed",
@@ -69,19 +69,17 @@ addopts = "-ra --strict-markers"
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
-# Skip UP* (pyupgrade) — SDK targets Python 3.9 where typing.Dict / List
-# are still the right choice for runtime generics.
 select = ["E", "F", "W", "I", "B", "N"]
 ignore = ["E501"]
 
 [tool.black]
 line-length = 100
-target-version = ["py39", "py310", "py311", "py312", "py313"]
+target-version = ["py310", "py311", "py312", "py313", "py314"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_unreachable = true
 warn_unused_ignores = true

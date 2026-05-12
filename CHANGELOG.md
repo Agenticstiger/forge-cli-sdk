@@ -40,6 +40,11 @@ Import path remains `fluid_sdk` (dual naming — see README).
   precursor). All exports moved to `fluid_sdk` with role-based naming
   (`BasePlugin` instead of `BaseProvider`, `ExecutionResult` instead of
   `ApplyResult`, `PluginError` instead of `ProviderError`).
+- **Raised Python floor: `requires-python = ">=3.10"`** (was `>=3.9`).
+  Matches the `data-product-forge` CLI's `>=3.10` requirement so plugin
+  authors and CLI users target the same Python range. CI matrix now runs
+  on 3.10 / 3.11 / 3.12 / 3.13 / 3.14. Black / ruff / mypy targets
+  bumped to match.
 
 ### Fixed
 
