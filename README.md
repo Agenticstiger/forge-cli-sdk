@@ -1,54 +1,139 @@
-# fluid-provider-sdk
+# fluid-sdk
 
-Zero-dependency SDK for building [FLUID](https://open-data-protocol.github.io/fluid/) data product providers.
+**Build a FLUID plugin in 30 seconds. Get 15+ conformance tests for free.**
 
-## Why a separate package?
-
-Third-party provider authors only need the `BaseProvider` ABC and a handful of
-types. Installing the full `fluid-build` CLI (~40 dependencies) just to develop
-a provider is overkill. This SDK package has **zero external dependencies**.
-
-## Install
+Zero-dependency Python SDK for building plugins that extend the FLUID data-product CLI. Write a plugin once, plug it into the FLUID CLI via Python entry-points. Four built-in roles, one mental model.
 
 ```bash
-pip install fluid-provider-sdk
+pip install fluid-sdk
 ```
 
-## Quick Start
+That's the only dependency.
+
+## What can I build?
+
+| Role | What it does | When you'd build one |
+|---|---|---|
+| [`InfraProvider`](docs/reference/role-taxonomy.md#infraprovider) | Provisions cloud resources (datasets, tables, IAM) | You're adding support for a new cloud platform |
+| [`CustomScaffold`](docs/reference/role-taxonomy.md#customscaffold) | Generates files from a contract (CI configs, app code, IaC) | Your org has a standard project layout you want every team to use |
+| [`Validator`](docs/reference/role-taxonomy.md#validator) | Inspects a contract and emits findings | You have governance / compliance / cost rules to enforce |
+| [`CatalogAdapter`](docs/reference/role-taxonomy.md#catalogadapter) | Syncs product metadata to a catalog (DataHub, Atlan) | You want fluid contracts to flow into your existing catalog |
+
+## 30-second example — your first plugin
 
 ```python
-from fluid_provider_sdk import BaseProvider, ApplyResult, ProviderError
+# scaffold.py
+from fluid_sdk import ContractHelper, CustomScaffold, write_file_action
 
-class MyCloudProvider(BaseProvider):
-    name = "mycloud"
+
+class HelloScaffold(CustomScaffold):
+    name = "hello"
 
     def plan(self, contract):
-        return [{"op": "create_table", "resource_id": "t1"}]
-
-    def apply(self, actions):
-        import time
-        start = time.time()
-        results = []
-        for action in actions:
-            results.append({"op": action["op"], "status": "ok"})
-        return ApplyResult(
-            provider=self.name,
-            applied=len(results),
-            failed=0,
-            duration_sec=round(time.time() - start, 3),
-            timestamp="",
-            results=results,
-        )
+        c = ContractHelper(contract)
+        return [
+            write_file_action(
+                path="README.md",
+                content=f"# {c.name}\n\n{c.description}\n".encode("utf-8"),
+            ).to_dict(),
+        ]
 ```
 
-Register via entry point in your `pyproject.toml`:
+```python
+# tests/test_scaffold.py
+from fluid_sdk.testing import CustomScaffoldTestHarness, LOCAL_CONTRACT
+from scaffold import HelloScaffold
+
+
+class TestHelloScaffold(CustomScaffoldTestHarness):
+    plugin_class = HelloScaffold
+    sample_contracts = [LOCAL_CONTRACT]
+```
+
+`pytest` runs **15+ conformance tests** automatically. Determinism, idempotency, path-traversal safety, role declaration — all verified.
+
+→ Full step-by-step in [docs/getting-started/](docs/getting-started/README.md).
+
+## How users plug your plugin into the FLUID CLI
+
+Plugin authors register via `pyproject.toml`:
 
 ```toml
-[project.entry-points."fluid_build.providers"]
-mycloud = "my_package.provider:MyCloudProvider"
+[project.entry-points."fluid_build.custom_scaffolds"]
+hello = "my_pkg.scaffold:HelloScaffold"
 ```
 
-## API Reference
+End users then:
 
-See the [Custom Providers Guide](https://agenticstiger.github.io/forge_docs/providers/custom-providers.html)
-for the full guide.
+```bash
+pip install data-product-forge               # the CLI
+pip install data-product-forge-custom-scaffold   # the engine
+pip install your-plugin               # what you wrote
+```
+
+And in any contract:
+
+```yaml
+extensions:
+  customScaffold:
+    libraries:
+      - id: ci
+        source: { kind: pypi, package: your-plugin, version: ">=0.1" }
+    patterns:
+      - use: ci:hello
+```
+
+```bash
+fluid generate custom-scaffold
+# Your plugin's files appear in the workspace.
+```
+
+## Documentation
+
+**Start here:**
+
+- **[Getting Started (5 minutes)](docs/getting-started/README.md)** — build your first plugin, see tests pass, run it.
+- **[Your first real plugin (15 minutes)](docs/walkthrough/your-first-real-plugin.md)** — build a complete GitLab CI generator. Realistic, deployable.
+
+**Working examples** (every one runs `pytest` + `python demo.py` standalone):
+
+- **[`examples/hello-scaffold/`](examples/hello-scaffold/)** — the smallest possible plugin (~30 LOC)
+- **[`examples/gitlab-ci-scaffold/`](examples/gitlab-ci-scaffold/)** — full CI generator (~150 LOC, 27 tests)
+- **[`examples/steward-validator/`](examples/steward-validator/)** — custom governance rule (~80 LOC, 22 tests)
+
+**Reference:**
+
+- [`docs/reference/architecture.md`](docs/reference/architecture.md) — the four-layer model
+- [`docs/reference/role-taxonomy.md`](docs/reference/role-taxonomy.md) — pick the right role
+- [`docs/reference/contract-parsing.md`](docs/reference/contract-parsing.md) — `ContractHelper` API
+- [`docs/reference/conformance-testing.md`](docs/reference/conformance-testing.md) — test harnesses
+
+## The public API in 10 lines
+
+```python
+from fluid_sdk import (
+    CustomScaffold,        # subclass for file-emitting plugins
+    InfraProvider,         # subclass for cloud-infra plugins
+    Validator,             # subclass for contract-inspection plugins
+    CatalogAdapter,        # subclass for catalog-sync plugins
+    ContractHelper,        # wrap any contract dict — typed read access
+    write_file_action,     # builds a canonical write_file PluginAction
+    Finding,               # validator authors emit these
+)
+# Everything else is in the role docs.
+```
+
+## Why a separate SDK?
+
+The full FLUID CLI pulls ~40 transitive dependencies. As a plugin author, you don't need any of that — you only need:
+
+- `BasePlugin` + the four role subclasses
+- Action / result / metadata / capabilities data types
+- `ContractHelper` for parsing fluid contracts
+- A test harness
+
+…all in pure Python stdlib. The end user installs the full CLI; you only need `fluid-sdk`. Faster `pip install`, no version-resolution headaches, your plugin works against multiple FLUID CLI versions.
+
+## License
+
+Apache-2.0. See [`LICENSE`](LICENSE).
