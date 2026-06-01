@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-06-01
+
 ### Added
 
 - `iter_extension_schemas()` and the `fluid_build.extension_schemas` entry-point
