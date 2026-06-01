@@ -22,6 +22,9 @@ Entry-point groups the FLUID CLI walks:
 * ``fluid_build.validators`` — register :class:`Validator` plugins
 * ``fluid_build.providers`` — register cloud-infra providers
 * ``fluid_build.catalog_adapters`` — register catalog adapters
+* ``fluid_build.extension_schemas`` — register a JSON-Schema provider for a
+  ``contract.extensions.<key>`` block so the CLI copilot can natively generate
+  and validate it (see :func:`iter_extension_schemas`)
 
 This SDK has **zero external dependencies** beyond the Python standard
 library. Install ``fluid-sdk`` and you can develop a plugin without
@@ -53,6 +56,9 @@ Public API::
         # Helpers
         write_file_action,
         validate_actions,
+        # Extension-schema discovery
+        iter_extension_schemas,
+        EXTENSION_SCHEMAS_GROUP,
         # Phase constants
         PHASE_INFRASTRUCTURE,
         PHASE_BUILD,
@@ -89,6 +95,9 @@ from .contract import (
     ContractHelper,
     ExposeSpec,
 )
+
+# Extension-schema discovery (for the CLI copilot + plugin authors)
+from .discovery import EXTENSION_SCHEMAS_GROUP, iter_extension_schemas
 from .error import PluginError, PluginInternalError
 from .metadata import PluginMetadata
 from .result import ExecutionResult
@@ -119,6 +128,9 @@ __all__ = [
     "Finding",
     "validate_actions",
     "write_file_action",
+    # ── Extension-schema discovery ───────────────────────────────
+    "iter_extension_schemas",
+    "EXTENSION_SCHEMAS_GROUP",
     # ── Errors ───────────────────────────────────────────────────
     "PluginError",
     "PluginInternalError",
