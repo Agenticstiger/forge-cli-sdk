@@ -7,6 +7,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `iter_extension_schemas()` and the `fluid_build.extension_schemas` entry-point
+  group. Plugins advertise the JSON-Schema for their `contract.extensions.<key>`
+  block via a provider (`get_extension_schema(fluid_version=None) -> dict`), and
+  the `data-product-forge` CLI copilot enumerates them to natively generate and
+  validate extension blocks — no CLI change required per new extension. Walks the
+  group with per-plugin error isolation (a broken provider is skipped, logged by
+  exception *type* only so a secret-bearing error message cannot leak). Zero new
+  dependencies.
+
+### Removed
+
+- Dead `schemas/*.json` package-data glob (the SDK ships no first-party schema;
+  extension schemas live in the plugins that own them).
+
 ## [0.9.0] — 2026-05-12
 
 First PyPI release under the `data-product-forge-sdk` distribution name.

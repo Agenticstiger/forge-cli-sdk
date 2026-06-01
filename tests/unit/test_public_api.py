@@ -21,6 +21,9 @@ PROMISED_EXPORTS = {
     "Finding",
     "validate_actions",
     "write_file_action",
+    # Extension-schema discovery
+    "iter_extension_schemas",
+    "EXTENSION_SCHEMAS_GROUP",
     # Errors
     "PluginError",
     "PluginInternalError",

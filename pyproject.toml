@@ -60,7 +60,7 @@ where = ["src"]
 include = ["fluid_sdk*"]
 
 [tool.setuptools.package-data]
-fluid_sdk = ["py.typed", "schemas/*.json"]
+fluid_sdk = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
