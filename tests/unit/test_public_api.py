@@ -10,17 +10,27 @@ import pytest
 import fluid_sdk
 
 PROMISED_EXPORTS = {
-    # ABCs
+    # ABCs (four roles)
     "BasePlugin",
     "CustomScaffold",
     "Validator",
+    "InfraProvider",
+    "CatalogAdapter",
     # Action + result
     "PluginAction",
     "ExecutionResult",
     "ScaffoldFile",
     "Finding",
+    "PluginCapabilities",
     "validate_actions",
     "write_file_action",
+    "provision_action",
+    "catalog_entry_action",
+    # Typed value domains
+    "Severity",
+    "ActionStatus",
+    "Phase",
+    "FAILING_SEVERITIES",
     # Extension-schema discovery
     "iter_extension_schemas",
     "EXTENSION_SCHEMAS_GROUP",
@@ -45,8 +55,12 @@ PROMISED_EXPORTS = {
     "PHASE_SCAFFOLD",
     "PHASE_CATALOG",
     "PHASE_DEFAULT",
-    # Version
+    # Version + compatibility
     "SDK_VERSION",
+    "SDK_PROTOCOL_VERSION",
+    "MIN_CLI_VERSION",
+    "MAX_CLI_VERSION",
+    "cli_requirement",
 }
 
 
@@ -61,10 +75,22 @@ def test_all_exports_actually_importable() -> None:
 
 
 def test_role_classes_subclass_base_plugin() -> None:
-    from fluid_sdk import BasePlugin, CustomScaffold, Validator
+    from fluid_sdk import BasePlugin, CatalogAdapter, CustomScaffold, InfraProvider, Validator
 
-    for role_cls in (CustomScaffold, Validator):
+    for role_cls in (CustomScaffold, Validator, InfraProvider, CatalogAdapter):
         assert issubclass(role_cls, BasePlugin), f"{role_cls.__name__} must subclass BasePlugin"
+
+
+def test_four_roles_have_distinct_canonical_tags() -> None:
+    from fluid_sdk import CatalogAdapter, CustomScaffold, InfraProvider, Validator
+
+    tags = {
+        CustomScaffold.role,
+        Validator.role,
+        InfraProvider.role,
+        CatalogAdapter.role,
+    }
+    assert tags == {"custom_scaffold", "validator", "provider", "catalog"}
 
 
 def test_exports_match_all_strict() -> None:

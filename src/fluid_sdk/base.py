@@ -34,6 +34,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
+from .capabilities import PluginCapabilities
 from .error import PluginError
 from .metadata import PluginMetadata
 from .result import ExecutionResult
@@ -123,6 +124,20 @@ class BasePlugin(ABC):
             sdk_version=SDK_VERSION,
             author="Unknown",
         )
+
+    #: Declared capabilities. Role ABCs override the default; plugins override
+    #: only what differs. See :class:`fluid_sdk.capabilities.PluginCapabilities`.
+    _capabilities = PluginCapabilities()
+
+    @classmethod
+    def capabilities(cls) -> PluginCapabilities:
+        """Return this plugin's declared capabilities.
+
+        Override ``_capabilities`` (or this method) to advertise non-default
+        flags. The CLI and conformance harness read these to decide how to drive
+        the plugin (credentials, dry-run, …).
+        """
+        return cls._capabilities
 
     # ── plan / apply (required) ─────────────────────────────────────
 

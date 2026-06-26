@@ -1,13 +1,18 @@
-"""Role-specific conformance harnesses.
+"""Role-specific conformance harnesses — one per role.
 
-Only :class:`CustomScaffoldTestHarness` ships here — it adds checks that
-genuinely differ from the universal :class:`PluginTestHarness` (byte-identical
-determinism, idempotency of repeated apply, path-traversal safety on every
-write_file action).
+Each adds checks beyond the universal :class:`PluginTestHarness`:
 
-For other roles (cloud-infra providers, validators, catalog adapters), the
-universal :class:`PluginTestHarness` is sufficient — add domain-specific
-``test_*`` methods directly in your plugin's test file.
+* :class:`CustomScaffoldTestHarness` — byte-identical determinism, idempotency
+  of repeated apply, path-traversal safety on every ``write_file`` action.
+* :class:`ValidatorTestHarness` — findings carry a recognised severity; apply is
+  exercised (validators are side-effect-free).
+* :class:`InfraProviderTestHarness` — role/subclass conformance for cloud
+  providers (apply is *not* run by default — it provisions real infra).
+* :class:`CatalogAdapterTestHarness` — role/subclass conformance for catalog
+  adapters (apply is *not* run by default — it writes to a live catalog).
+
+Subclass the harness matching your plugin's role and set ``plugin_class``;
+pytest auto-discovers every ``test_*`` method.
 """
 
 from __future__ import annotations
@@ -16,8 +21,12 @@ import tempfile
 from pathlib import Path
 from typing import ClassVar
 
+from ..domains import Severity
+from ..roles.catalog_adapter import CatalogAdapter
 from ..roles.custom_scaffold import CustomScaffold
-from .harness import PluginTestHarness
+from ..roles.infra_provider import InfraProvider
+from ..roles.validator import Validator
+from .harness import PluginTestHarness, _as_action_dict
 
 
 class CustomScaffoldTestHarness(PluginTestHarness):
@@ -118,4 +127,103 @@ class CustomScaffoldTestHarness(PluginTestHarness):
                 assert ".." not in path.split("/"), f"Path traversal forbidden: {path!r}"
 
 
-__all__ = ["CustomScaffoldTestHarness"]
+class ValidatorTestHarness(PluginTestHarness):
+    """Conformance harness for validator plugins.
+
+    Validators are side-effect-free, so ``apply`` is exercised by default
+    (``skip_apply = False``) — the universal ``test_apply_reflects_plan`` and
+    ``test_apply_returns_execution_result`` checks run against fixtures.
+    """
+
+    skip_apply: ClassVar[bool] = False
+
+    def test_role_is_validator(self) -> None:
+        assert (
+            getattr(self.plugin_class, "role", "") == "validator"
+        ), "Validator plugins must declare role='validator'"
+
+    def test_is_validator_subclass(self) -> None:
+        assert issubclass(
+            self.plugin_class, Validator
+        ), f"{self.plugin_class.__name__} must subclass Validator"
+
+    def test_findings_carry_recognised_severity(self) -> None:
+        """Every emit_finding action's severity must be in the Severity domain.
+
+        Catches typo'd severities (which would otherwise fail safe to ERROR and
+        muddy the failure tally) at conformance time.
+        """
+        if not self.sample_contracts:
+            return
+        prov = self.get_plugin()
+        for contract in self.sample_contracts:
+            for action in prov.plan(contract):
+                d = _as_action_dict(action)
+                if d.get("op") != "emit_finding":
+                    continue
+                severity = (d.get("params") or {}).get("severity", "info")
+                assert Severity.is_known(severity), (
+                    f"finding {d.get('resource_id')!r} has unrecognised severity "
+                    f"{severity!r} (expected one of {[s.value for s in Severity]})"
+                )
+
+
+class InfraProviderTestHarness(PluginTestHarness):
+    """Conformance harness for cloud-infrastructure provider plugins.
+
+    ``apply`` provisions real resources, so it is **not** run by default
+    (``skip_apply = True``); the harness verifies role conformance and
+    deterministic, well-formed plans.
+    """
+
+    skip_apply: ClassVar[bool] = True
+
+    def test_role_is_provider(self) -> None:
+        assert (
+            getattr(self.plugin_class, "role", "") == "provider"
+        ), "InfraProvider plugins must declare role='provider'"
+
+    def test_is_infra_provider_subclass(self) -> None:
+        assert issubclass(
+            self.plugin_class, InfraProvider
+        ), f"{self.plugin_class.__name__} must subclass InfraProvider"
+
+    def test_provision_actions_have_resource_type(self) -> None:
+        if not self.sample_contracts:
+            return
+        prov = self.get_plugin()
+        for contract in self.sample_contracts:
+            for action in prov.plan(contract):
+                d = _as_action_dict(action)
+                assert d.get("resource_type"), (
+                    f"provider action {d.get('resource_id')!r} must declare a "
+                    f"resource_type for dependency/diff tracking"
+                )
+
+
+class CatalogAdapterTestHarness(PluginTestHarness):
+    """Conformance harness for metadata-catalog adapter plugins.
+
+    ``apply`` writes to a live catalog, so it is **not** run by default
+    (``skip_apply = True``).
+    """
+
+    skip_apply: ClassVar[bool] = True
+
+    def test_role_is_catalog(self) -> None:
+        assert (
+            getattr(self.plugin_class, "role", "") == "catalog"
+        ), "CatalogAdapter plugins must declare role='catalog'"
+
+    def test_is_catalog_adapter_subclass(self) -> None:
+        assert issubclass(
+            self.plugin_class, CatalogAdapter
+        ), f"{self.plugin_class.__name__} must subclass CatalogAdapter"
+
+
+__all__ = [
+    "CustomScaffoldTestHarness",
+    "ValidatorTestHarness",
+    "InfraProviderTestHarness",
+    "CatalogAdapterTestHarness",
+]

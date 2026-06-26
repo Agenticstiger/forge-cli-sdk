@@ -20,10 +20,21 @@ safe to run against test fixtures (e.g. scaffolds writing to a tempdir).
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, ClassVar, Dict, List, Type
 
 from ..base import BasePlugin
+from ..capabilities import PluginCapabilities
+
+
+def _as_action_dict(action: Any) -> Dict[str, Any]:
+    """Normalise an action (dict or PluginAction) to a plain dict."""
+    if hasattr(action, "to_dict"):
+        return action.to_dict()
+    if isinstance(action, dict):
+        return action
+    raise AssertionError(f"action is neither a dict nor a PluginAction: {type(action).__name__}")
 
 
 class PluginTestHarness:
@@ -142,6 +153,38 @@ class PluginTestHarness:
         )
         assert info.sdk_version, "PluginMetadata.sdk_version must be set"
 
+    def test_get_plugin_info_declares_compat(self) -> None:
+        """Metadata must declare the protocol generation + CLI requirement."""
+        if not hasattr(self.plugin_class, "get_plugin_info"):
+            return
+        info = self.plugin_class.get_plugin_info()
+        assert isinstance(
+            getattr(info, "sdk_protocol_version", None), int
+        ), "PluginMetadata.sdk_protocol_version must be an int (declared compat)"
+        assert getattr(info, "requires_cli", None), "PluginMetadata.requires_cli must be set"
+
+    # ── capabilities test ────────────────────────────────────────
+
+    def test_capabilities_declared(self) -> None:
+        """Plugin must declare typed capabilities via capabilities()."""
+        caps = self.plugin_class.capabilities()
+        assert isinstance(
+            caps, PluginCapabilities
+        ), "capabilities() must return a PluginCapabilities"
+        # to_dict() round-trips the flag set (used by the CLI / marketplace).
+        assert set(caps.to_dict()) == {"render", "auth", "streaming", "dry_run", "idempotent"}
+
+    # ── serialisation test ───────────────────────────────────────
+
+    def test_plan_actions_are_json_serialisable(self) -> None:
+        """Every planned action must serialise to JSON (CLI plan/audit trail)."""
+        if not self.sample_contracts:
+            return
+        prov = self.get_plugin()
+        for contract in self.sample_contracts:
+            for action in prov.plan(contract):
+                json.dumps(_as_action_dict(action))
+
     # ── apply tests (opt-in) ─────────────────────────────────────
 
     def test_apply_returns_execution_result(self) -> None:
@@ -156,3 +199,24 @@ class PluginTestHarness:
             ), "apply() must return an ExecutionResult-like object with 'plugin' attr"
             assert hasattr(result, "applied"), "ExecutionResult must have 'applied'"
             assert hasattr(result, "failed"), "ExecutionResult must have 'failed'"
+
+    def test_apply_reflects_plan(self) -> None:
+        """apply() must account for every planned action (no silent drops).
+
+        Opt-in: only runs when ``skip_apply`` is False (i.e. apply is safe to
+        exercise against fixtures). Catches the 'plan emits N actions, apply
+        silently handles fewer' class of bug.
+        """
+        if self.skip_apply or not self.sample_contracts:
+            return
+        prov = self.get_plugin()
+        for contract in self.sample_contracts:
+            actions = prov.plan(contract)
+            result = prov.apply(actions)
+            accounted = result.applied + result.failed + len(getattr(result, "results", []) or [])
+            assert accounted >= len(actions) or len(getattr(result, "results", [])) == len(
+                actions
+            ), (
+                f"apply() accounted for fewer actions than planned "
+                f"(planned={len(actions)}, applied={result.applied}, failed={result.failed})"
+            )
