@@ -7,6 +7,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Two new role ABCs make the "four roles" promise real.** `InfraProvider`
+  (`role="provider"`) and `CatalogAdapter` (`role="catalog"`) ship as first-class
+  exports alongside `CustomScaffold` and `Validator`, each with an action builder
+  (`provision_action` / `catalog_entry_action`). Both leave `apply` abstract on
+  purpose, so a plugin that forgets to implement it fails loudly rather than
+  silently no-op'ing.
+- **Typed value domains** `Severity`, `ActionStatus`, `Phase` (zero-dependency
+  `str`-enums) plus `FAILING_SEVERITIES`. `Severity.coerce` normalises aliases
+  and **fails safe** — an unrecognised severity counts as `ERROR`, never silently
+  passing.
+- **`PluginCapabilities` + `BasePlugin.capabilities()`** — a typed plugin
+  self-description with per-role defaults (replaces the prose-only "capability
+  defaults" the role docstrings previously claimed).
+- **Plugin↔CLI compatibility declaration** — `SDK_PROTOCOL_VERSION`,
+  `MIN_CLI_VERSION` / `MAX_CLI_VERSION`, `cli_requirement()`, and
+  `PluginMetadata.{sdk_protocol_version,requires_cli}`. The SDK declares; the CLI
+  gates (dbt `require-dbt-version` model).
+- **The three previously-advertised role harnesses now exist** —
+  `ValidatorTestHarness`, `InfraProviderTestHarness`, `CatalogAdapterTestHarness`
+  (previously documented but `ImportError` on use). The universal harness floor
+  rose too: capabilities/compat declared, plan JSON-serialisable, and an opt-in
+  apply-reflects-plan check.
+- **`assert_plan_matches_snapshot`** — a zero-dependency golden-file snapshot
+  helper (syrupy UX: fail-on-missing, `FLUID_SNAPSHOT_UPDATE=1`) for dbt-grade
+  plan output pinning across every role.
+
+### Fixed
+
+- **Severity footgun in `Validator.apply`.** The reference implementation bucketed
+  `counts[severity]` by raw string and tallied failures only from the literal
+  `"error"`/`"critical"` keys, so a typo'd severity landed in a phantom bucket and
+  silently escaped the failure tally. Severities now route through
+  `Severity.coerce` (fail-safe) and unrecognised values surface in
+  `ExecutionResult.warnings`.
+
 ## [0.9.1] — 2026-06-01
 
 ### Added
