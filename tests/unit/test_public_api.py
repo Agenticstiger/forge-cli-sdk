@@ -21,6 +21,11 @@ PROMISED_EXPORTS = {
     "Finding",
     "validate_actions",
     "write_file_action",
+    # Typed value domains
+    "Severity",
+    "ActionStatus",
+    "Phase",
+    "FAILING_SEVERITIES",
     # Extension-schema discovery
     "iter_extension_schemas",
     "EXTENSION_SCHEMAS_GROUP",

@@ -24,19 +24,26 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
+from .domains import Phase
+
 # ---------------------------------------------------------------------------
-# Standard phase names (informational — plugins may invent their own)
+# Standard phase names — now members of the :class:`Phase` domain enum.
+#
+# These ``PHASE_*`` constants are kept as the ergonomic, back-compatible spelling
+# (``phase=PHASE_BUILD``). Each is a ``Phase`` member, and because ``Phase`` is a
+# ``str``-enum every existing comparison and serialisation keeps working:
+# ``PHASE_BUILD == "build"`` and ``json.dumps(PHASE_BUILD) == '"build"'``.
 # ---------------------------------------------------------------------------
 
-PHASE_INFRASTRUCTURE = "infrastructure"
-PHASE_IAM = "iam"
-PHASE_BUILD = "build"
-PHASE_EXPOSE = "expose"
-PHASE_SCHEDULE = "schedule"
-PHASE_VALIDATE = "validate"
-PHASE_SCAFFOLD = "scaffold"
-PHASE_CATALOG = "catalog"
-PHASE_DEFAULT = "default"
+PHASE_INFRASTRUCTURE = Phase.INFRASTRUCTURE
+PHASE_IAM = Phase.IAM
+PHASE_BUILD = Phase.BUILD
+PHASE_EXPOSE = Phase.EXPOSE
+PHASE_SCHEDULE = Phase.SCHEDULE
+PHASE_VALIDATE = Phase.VALIDATE
+PHASE_SCAFFOLD = Phase.SCAFFOLD
+PHASE_CATALOG = Phase.CATALOG
+PHASE_DEFAULT = Phase.DEFAULT
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +193,7 @@ def validate_actions(actions: Sequence[PluginAction]) -> List[str]:
 __all__ = [
     "PluginAction",
     "validate_actions",
+    "Phase",
     "PHASE_INFRASTRUCTURE",
     "PHASE_IAM",
     "PHASE_BUILD",

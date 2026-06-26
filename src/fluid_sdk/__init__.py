@@ -42,6 +42,11 @@ Public API::
         ExecutionResult,
         ScaffoldFile,
         Finding,
+        # Typed value domains
+        Severity,
+        ActionStatus,
+        Phase,
+        FAILING_SEVERITIES,
         # Errors
         PluginError,
         PluginInternalError,
@@ -98,6 +103,14 @@ from .contract import (
 
 # Extension-schema discovery (for the CLI copilot + plugin authors)
 from .discovery import EXTENSION_SCHEMAS_GROUP, iter_extension_schemas
+
+# Typed value domains (severity / status / phase)
+from .domains import (
+    FAILING_SEVERITIES,
+    ActionStatus,
+    Phase,
+    Severity,
+)
 from .error import PluginError, PluginInternalError
 from .metadata import PluginMetadata
 from .result import ExecutionResult
@@ -128,6 +141,11 @@ __all__ = [
     "Finding",
     "validate_actions",
     "write_file_action",
+    # ── Typed value domains ──────────────────────────────────────
+    "Severity",
+    "ActionStatus",
+    "Phase",
+    "FAILING_SEVERITIES",
     # ── Extension-schema discovery ───────────────────────────────
     "iter_extension_schemas",
     "EXTENSION_SCHEMAS_GROUP",

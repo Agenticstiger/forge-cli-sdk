@@ -44,10 +44,11 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Union
 
 from ..action import PHASE_VALIDATE, PluginAction
 from ..base import BasePlugin
+from ..domains import Severity
 from ..result import ExecutionResult
 
 # ---------------------------------------------------------------------------
@@ -60,8 +61,13 @@ class Finding:
     """A single validation finding.
 
     Fields:
-        severity: One of ``"info"``, ``"warn"``, ``"error"``, ``"critical"``.
-            The CLI exits non-zero for ``error`` / ``critical`` by default.
+        severity: One of ``"info"``, ``"warn"``, ``"error"``, ``"critical"``
+            (a :class:`~fluid_sdk.domains.Severity`). Normalised on construction
+            via :meth:`Severity.coerce`, so aliases (``"warning"``) map to the
+            canonical member and an unrecognised value fails safe to
+            :attr:`Severity.ERROR` — a typo can never downgrade a failing
+            finding to passing. The CLI exits non-zero for ``error`` /
+            ``critical`` by default.
         code: Stable, machine-readable identifier (e.g. ``"PII_LEAK"``).
         message: Human-readable explanation.
         path: JSON-path (or label-path) into the contract pinpointing the
@@ -69,12 +75,16 @@ class Finding:
         remediation: Optional suggested fix.
     """
 
-    severity: str
+    severity: Union[Severity, str]
     code: str
     message: str
     path: Optional[str] = None
     remediation: Optional[str] = None
     tags: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Frozen dataclass: normalise severity into the closed Severity domain.
+        object.__setattr__(self, "severity", Severity.coerce(self.severity))
 
     def to_action(self) -> PluginAction:
         """Convert the finding into a planning action.
@@ -87,7 +97,7 @@ class Finding:
             resource_type="finding",
             resource_id=self.code,
             params={
-                "severity": self.severity,
+                "severity": Severity.coerce(self.severity).value,
                 "code": self.code,
                 "message": self.message,
                 "path": self.path,
@@ -115,26 +125,39 @@ class Validator(BasePlugin):
     role = "validator"
 
     def apply(self, actions: Iterable[Mapping[str, Any]]) -> ExecutionResult:
-        """Default: count findings by severity, return ExecutionResult."""
+        """Default: count findings by severity, return ExecutionResult.
+
+        Severities are normalised through :meth:`Severity.coerce`, which fails
+        safe: an unrecognised severity is counted as :attr:`Severity.ERROR` (and
+        surfaced in :attr:`ExecutionResult.warnings`) rather than landing in a
+        phantom bucket that silently escapes the failure tally.
+        """
         started = time.monotonic()
-        counts: Dict[str, int] = {"info": 0, "warn": 0, "error": 0, "critical": 0}
+        counts: Dict[Severity, int] = {sev: 0 for sev in Severity}
         results: List[Dict[str, Any]] = []
+        warnings: List[str] = []
 
         for action in actions:
             params = action.get("params") or {}
-            severity = str(params.get("severity", "info"))
-            counts[severity] = counts.get(severity, 0) + 1
+            raw = params.get("severity", "info")
+            severity = Severity.coerce(raw)
+            if not Severity.is_known(raw):
+                warnings.append(
+                    f"unrecognised severity {raw!r} on finding "
+                    f"{action.get('resource_id', '')!r}; counted as {severity.value!r}"
+                )
+            counts[severity] += 1
             results.append(
                 {
                     "op": action.get("op", ""),
                     "resource_id": action.get("resource_id", ""),
                     "status": "reported",
-                    "severity": severity,
+                    "severity": severity.value,
                     "message": params.get("message"),
                 }
             )
 
-        failed = counts.get("error", 0) + counts.get("critical", 0)
+        failed = sum(n for sev, n in counts.items() if sev.is_failing)
         return ExecutionResult(
             plugin=self.name,
             role=self.role,
@@ -143,6 +166,7 @@ class Validator(BasePlugin):
             duration_sec=round(time.monotonic() - started, 4),
             timestamp=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             results=results,
+            warnings=warnings,
         )
 
 
