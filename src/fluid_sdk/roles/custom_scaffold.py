@@ -59,6 +59,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from ..action import PHASE_SCAFFOLD, PluginAction
 from ..base import BasePlugin
+from ..capabilities import PluginCapabilities
 from ..error import PluginError
 from ..result import ExecutionResult
 
@@ -147,6 +148,9 @@ class CustomScaffold(BasePlugin):
     """
 
     role = "custom_scaffold"
+
+    # Scaffolds render files to disk; no credentials, no streaming.
+    _capabilities = PluginCapabilities(render=True, auth=False, streaming=False)
 
     def __init__(
         self,

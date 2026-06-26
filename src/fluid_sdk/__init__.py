@@ -2,21 +2,23 @@
 fluid-sdk — Zero-dependency SDK for building FLUID plugins.
 
 Build a plugin once against this SDK, register it via Python entry-points,
-and the FLUID CLI (``data-product-forge``) will discover and dispatch to it.
-Two role specialisations ship with real implementation value:
+and the FLUID CLI (``data-product-forge``) discovers and dispatches to it.
+Four role ABCs ship — one mental model, one ``role`` tag each:
 
 * :class:`CustomScaffold` — file-emitting plugins (CI configs, app code,
   IaC stacks). Ships a reference :meth:`apply` that writes files atomically
   with path-traversal protection and sha256 verification.
 * :class:`Validator` — contract-inspection plugins (governance / compliance
-  rules). Ships a default :meth:`apply` that summarises findings by
-  severity.
+  rules). Ships a default :meth:`apply` that summarises findings by severity.
+* :class:`InfraProvider` — cloud-infrastructure provisioning. ``apply`` is
+  abstract (platform-specific); use :func:`provision_action` to build actions.
+* :class:`CatalogAdapter` — metadata-catalog sync. ``apply`` is abstract
+  (catalog-specific); use :func:`catalog_entry_action` to build actions.
 
-Plugins for other roles (cloud-infra providers, catalog adapters) subclass
-:class:`BasePlugin` directly and set ``role = "provider"`` or
-``role = "catalog"`` themselves.
+Each role declares typed :meth:`~fluid_sdk.base.BasePlugin.capabilities` and a
+plugin↔CLI compatibility window the CLI gates at load (see :mod:`fluid_sdk.version`).
 
-Entry-point groups the FLUID CLI walks:
+Entry-point groups the FLUID CLI walks (one per role):
 
 * ``fluid_build.custom_scaffolds`` — register :class:`CustomScaffold` plugins
 * ``fluid_build.validators`` — register :class:`Validator` plugins
@@ -33,10 +35,12 @@ pulling the full FLUID CLI.
 Public API::
 
     from fluid_sdk import (
-        # ABCs
+        # ABCs — four roles, one mental model
         BasePlugin,
         CustomScaffold,
         Validator,
+        InfraProvider,
+        CatalogAdapter,
         # Data types
         PluginAction,
         ExecutionResult,
@@ -93,6 +97,9 @@ from .action import (
     validate_actions,
 )
 from .base import BasePlugin
+
+# Capabilities (typed plugin self-description)
+from .capabilities import PluginCapabilities
 from .contract import (
     BuildSpec,
     ColumnSpec,
@@ -115,12 +122,16 @@ from .error import PluginError, PluginInternalError
 from .metadata import PluginMetadata
 from .result import ExecutionResult
 
-# Role helpers (ship with real implementation value)
+# Role helpers — four roles, one mental model
 from .roles import (
+    CatalogAdapter,
     CustomScaffold,
     Finding,
+    InfraProvider,
     ScaffoldFile,
     Validator,
+    catalog_entry_action,
+    provision_action,
     write_file_action,
 )
 
@@ -136,17 +147,22 @@ from .version import (
 __version__ = SDK_VERSION
 
 __all__ = [
-    # ── ABCs ─────────────────────────────────────────────────────
+    # ── ABCs (four roles, one mental model) ──────────────────────
     "BasePlugin",
     "CustomScaffold",
     "Validator",
+    "InfraProvider",
+    "CatalogAdapter",
     # ── Action + result ──────────────────────────────────────────
     "PluginAction",
     "ExecutionResult",
     "ScaffoldFile",
     "Finding",
+    "PluginCapabilities",
     "validate_actions",
     "write_file_action",
+    "provision_action",
+    "catalog_entry_action",
     # ── Typed value domains ──────────────────────────────────────
     "Severity",
     "ActionStatus",
