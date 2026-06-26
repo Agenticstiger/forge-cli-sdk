@@ -22,15 +22,27 @@ pip install gitlab-ci-scaffold
 fluid plugins list
 ```
 
-```
-NAME              ROLE              VERSION  AUTHOR              DESCRIPTION
-local             provider          0.8.0    (built-in)          Local DuckDB provider
-gcp               provider          0.8.0    (built-in)          GCP BigQuery / GCS / Pub/Sub
-snowflake         provider          0.8.0    (built-in)          Snowflake provider
-gitlab-ci         custom_scaffold   0.1.0    Example Author      Generates a complete GitLab CI scaffold
+```text
+🔌 Installed FLUID plugins (by role):
+
+  custom_scaffold  (1)
+    • gitlab-ci                    allowed
+
+  provider  (5)
+    • aws                          allowed
+    • gcp                          allowed
+    • local                        allowed
+    • snowflake                    allowed
 ```
 
-Your plugin shows up under its role. Discovery worked.
+Your plugin shows up under its role. Discovery worked. Each entry is shown
+`allowed` or `BLOCKED` according to the operator allow/block policy
+(`FLUID_PLUGINS_ALLOWLIST` / `FLUID_PLUGINS_BLOCKLIST`); `fluid plugins --json`
+emits the same data machine-readably.
+
+> `fluid plugins` lists entry-point **names** by role with their allow/block
+> status — it does not load plugin code, so it intentionally does not print
+> versions, authors, or descriptions.
 
 ## Step 1 — User's existing contract
 

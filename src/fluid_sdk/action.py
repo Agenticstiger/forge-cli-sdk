@@ -22,7 +22,7 @@ itself does not enforce a closed enumeration.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 from .domains import Phase
 
@@ -75,7 +75,9 @@ class PluginAction:
     resource_id: str = ""
     params: Dict[str, Any] = field(default_factory=dict)
     depends_on: List[str] = field(default_factory=list)
-    phase: str = PHASE_DEFAULT
+    # Annotated Union[Phase, str]: `from_dict` normalises into a Phase member, but
+    # the constructor also accepts a plain str (a plugin may invent a phase name).
+    phase: Union[Phase, str] = PHASE_DEFAULT
     idempotent: bool = True
     description: Optional[str] = None
     tags: Dict[str, str] = field(default_factory=dict)
