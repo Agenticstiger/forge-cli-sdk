@@ -130,7 +130,9 @@ class PluginAction:
             resource_id=str(d.get("resource_id", "")),
             params=params,
             depends_on=list(d.get("depends_on") or []),
-            phase=str(d.get("phase", PHASE_DEFAULT)),
+            # Normalise into the closed Phase domain (was a bare str) so a
+            # round-tripped action carries a real Phase member, not free text.
+            phase=Phase.coerce(d.get("phase", PHASE_DEFAULT)),
             idempotent=bool(d.get("idempotent", True)),
             description=d.get("description"),
             tags=dict(d.get("tags") or {}),

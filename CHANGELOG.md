@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Type-honesty + conformance floor.** `PluginAction.from_dict` now coerces
+  `phase` into the closed `Phase` domain (was a bare `str`); the reference
+  `apply` implementations emit `ActionStatus` values (previously an
+  exported-but-unused vocabulary). The universal conformance harness now
+  **requires** at least one `sample_contract` (opt out with
+  `allow_no_sample_contracts = True`) instead of silently passing on empty, and
+  `test_apply_reflects_plan` enforces an **exact** per-action ledger rather than
+  a `>=` net.
+
 ### Added
 
 - **Docs-honesty CI gate** (`tests/unit/test_docs_honesty.py`) — scans every

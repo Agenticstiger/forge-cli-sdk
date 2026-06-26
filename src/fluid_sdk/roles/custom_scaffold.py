@@ -60,6 +60,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 from ..action import PHASE_SCAFFOLD, PluginAction
 from ..base import BasePlugin
 from ..capabilities import PluginCapabilities
+from ..domains import ActionStatus
 from ..error import PluginError
 from ..result import ExecutionResult
 
@@ -190,7 +191,9 @@ class CustomScaffold(BasePlugin):
             try:
                 if op != "write_file":
                     warnings.append(f"ignoring unsupported op={op!r} (resource_id={rid!r})")
-                    results.append({"op": op, "resource_id": rid, "status": "skipped"})
+                    results.append(
+                        {"op": op, "resource_id": rid, "status": ActionStatus.SKIPPED.value}
+                    )
                     continue
 
                 rel_path = params.get("path", "")
@@ -230,10 +233,24 @@ class CustomScaffold(BasePlugin):
 
                 applied += 1
                 artifacts.append(str(target))
-                results.append({"op": op, "resource_id": rid, "status": "ok", "path": rel_path})
+                results.append(
+                    {
+                        "op": op,
+                        "resource_id": rid,
+                        "status": ActionStatus.OK.value,
+                        "path": rel_path,
+                    }
+                )
             except Exception as e:
                 failed += 1
-                results.append({"op": op, "resource_id": rid, "status": "failed", "error": str(e)})
+                results.append(
+                    {
+                        "op": op,
+                        "resource_id": rid,
+                        "status": ActionStatus.FAILED.value,
+                        "error": str(e),
+                    }
+                )
                 self.err_kv(event="apply_failed", resource_id=rid, error=str(e))
 
         return ExecutionResult(
