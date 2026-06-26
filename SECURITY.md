@@ -24,7 +24,7 @@ This SDK is a **library**. It does not run a server, open sockets, or interpret 
 
 ### What the SDK is **not** responsible for
 
-- **Plugin trust.** A plugin is third-party Python that gets imported into the `data-product-forge` CLI process. Trust in a plugin = trust in whatever pip resolved when the user installed it. The SDK does not sandbox, time-limit, or isolate plugin code. The CLI documents this trust boundary in its own SECURITY.md; this SDK inherits it.
+- **Plugin trust.** A plugin is third-party Python that gets imported into the `data-product-forge` CLI process and runs **in-process at host trust** — the same property every entry-point plugin ecosystem has (dbt adapters, pluggy/pytest plugins, Backstage). Trust in a plugin = trust in whatever pip resolved when the user installed it. The SDK does not sandbox, time-limit, or isolate plugin code. The operator-side control is an **allow/block list**: set `FLUID_PLUGINS_ALLOWLIST` (only the named plugins load) or `FLUID_PLUGINS_BLOCKLIST` (named plugins are skipped) to pin exactly which plugins the CLI loads; the CLI also fail-isolates each plugin and logs load/run exceptions **by type only** so a secret-bearing message can't leak into logs. Pin plugin versions in your environment and review the code you install.
 - **Contract content.** If a contract `metadata.labels["x"]` contains `{{ 7*7 }}`, the SDK doesn't evaluate it. Downstream renderers (e.g. `data-product-forge-custom-scaffold`) make their own choices about Jinja2 autoescaping; see *their* SECURITY.md.
 - **Catalog / cloud auth.** Role implementations that talk to external systems handle credentials themselves; the SDK has nothing to do with that.
 

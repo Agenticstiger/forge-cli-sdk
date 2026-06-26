@@ -9,6 +9,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Docs-honesty CI gate** (`tests/unit/test_docs_honesty.py`) — scans every
+  Markdown doc for `from fluid_sdk… import X` statements and `fluid_build.<group>`
+  entry-point names and asserts each one actually resolves, so a doc can never
+  again advertise an export, harness, or group that doesn't exist. Plus a
+  consolidated SDK↔CLI **compatibility matrix** in `architecture.md` and a concrete
+  **plugin trust-boundary** section (allow/block lists, type-only error logging) in
+  `SECURITY.md`.
+
+### Fixed
+
+- **Docs reconciled to the real API.** Removed carried-over `fluid_provider_sdk`
+  symbols that were documented but never exported (`PluginHookSpec`, `CostEstimate`,
+  `invoke_hook`, `has_hook`) and the fictional hooks section; documented the real
+  `provision_action` / `catalog_entry_action` helpers and the typed domains; and
+  labelled an illustrative engine transcript as non-literal.
+
+### Added (roles, domains, harnesses)
+
 - **Two new role ABCs make the "four roles" promise real.** `InfraProvider`
   (`role="provider"`) and `CatalogAdapter` (`role="catalog"`) ship as first-class
   exports alongside `CustomScaffold` and `Validator`, each with an action builder

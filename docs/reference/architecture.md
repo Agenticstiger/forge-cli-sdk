@@ -41,7 +41,7 @@ This document explains the design — why it looks the way it does and how the p
 │  • BasePlugin (ABC: plan, apply, render, capabilities)            │
 │  • PluginAction (op, resource_id, params, depends_on, phase, ...)│
 │  • ExecutionResult (apply() return type)                          │
-│  • PluginMetadata, PluginCapabilities, PluginHookSpec             │
+│  • PluginMetadata, PluginCapabilities                            │
 │  • PluginError, PluginInternalError                              │
 └──────────────────────────────┬───────────────────────────────────┘
                                │ wraps contract input
@@ -125,31 +125,56 @@ for expose in c.exposes():
 
 When the SDK version is bumped to track a new contract version, `ContractHelper` absorbs the diff; plugin code stays unchanged.
 
-## Hooks and error handling
+## Capabilities and error handling
 
-`PluginHookSpec` declares the lifecycle hooks; `BasePlugin` doesn't inherit it by default (hooks are opt-in). Plugins that need hooks:
+Every plugin advertises what it does via `capabilities()`, which returns a typed
+`PluginCapabilities`. The CLI and the conformance harness read these flags to decide
+how to drive the plugin (whether to prompt for credentials, whether a dry-run is
+available). Role ABCs ship sensible defaults; a plugin overrides only what differs:
 
 ```python
-from fluid_sdk import InfraProvider, PluginHookSpec
+from fluid_sdk import InfraProvider, PluginCapabilities
 
-class MyProvider(InfraProvider, PluginHookSpec):
+class MyProvider(InfraProvider):
     name = "myprov"
-
-    def pre_apply(self, actions):
-        # Last chance to filter/annotate actions before apply
-        return [a for a in actions if not a.get("tags", {}).get("dry_run")]
-
-    def post_apply(self, result):
-        # Audit logging
-        ...
+    # InfraProvider defaults to auth=True, dry_run=True; override only the delta.
+    _capabilities = PluginCapabilities(auth=True, dry_run=True, streaming=True)
 ```
 
-Hook exceptions are **swallowed** by `invoke_hook` so a buggy hook can never break core plan/apply flow. If you need hard-failure semantics, raise from `plan()`/`apply()` instead.
+Errors use a deliberate two-tier model so the CLI can react correctly:
+
+- Raise **`PluginError`** for user-actionable failures (auth, quota, a bad
+  contract). The CLI surfaces the message verbatim.
+- Raise **`PluginInternalError`** for bugs / environment failures. The CLI treats
+  it as an internal fault (and logs a stack trace under debug).
+
+There is no separate hook system: `plan()` and `apply()` *are* the extension
+points. Raise from them for hard-failure semantics.
 
 Two error types let plugins signal failure intent:
 
 - `PluginError` — user-actionable (auth, contract, env). CLI prints the message verbatim, no traceback.
 - `PluginInternalError` — bug or unexpected env failure. CLI prints traceback + asks the user to file an issue.
+
+## Compatibility (SDK ↔ CLI)
+
+The SDK and the CLI release independently. They coordinate by **declare-and-gate**
+(the model dbt uses for `require-dbt-version`): a plugin *declares* the CLI window
+it supports, and the CLI *gates* its own version against that at load.
+
+| Surface | Where | Meaning |
+|---|---|---|
+| `SDK_PROTOCOL_VERSION` | `fluid_sdk.version` | Plugin-interface generation. Bumped only on a breaking change to `BasePlugin` / the role contracts. |
+| `MIN_CLI_VERSION` / `MAX_CLI_VERSION` | `fluid_sdk.version` | The CLI version window this SDK's protocol is known to work with (`MAX = None` ⇒ no upper bound). |
+| `cli_requirement()` | `fluid_sdk.version` | The same window as a PEP 440 specifier string — the default for `PluginMetadata.requires_cli`. |
+| `PluginMetadata.requires_cli` | `get_plugin_info()` | Per-plugin override of the CLI window. The CLI checks its version against this. |
+
+At load the CLI compares its own version (from `importlib.metadata`) to a plugin's
+`requires_cli`. By default a mismatch is **advisory** (warn + still load); set
+`FLUID_PLUGIN_STRICT_COMPAT=1` to make the CLI **reject** an incompatible plugin.
+A plugin built against one SDK minor keeps working across CLI patch/minor releases
+within the declared window — and `ContractHelper` (above) absorbs contract-schema
+drift so plugin code rarely needs to change at all.
 
 ## Determinism is the bedrock
 

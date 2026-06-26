@@ -55,24 +55,26 @@ from fluid_sdk import (
     ScaffoldFile,        # convenience for scaffold authors
     Finding,             # convenience for validator authors
 
+    # ── Typed value domains ───────────────────────────────────────
+    Severity, ActionStatus, Phase, FAILING_SEVERITIES,
+
     # ── Errors ───────────────────────────────────────────────────
     PluginError,         # user-actionable (auth, contract, env)
     PluginInternalError, # bugs / unexpected env failures
 
-    # ── Metadata, capabilities, hooks ─────────────────────────────
+    # ── Metadata + capabilities ───────────────────────────────────
     PluginMetadata,
     PluginCapabilities,
-    PluginHookSpec,
-    CostEstimate,
 
     # ── Contract parsing (version-agnostic) ───────────────────────
     ContractHelper,
     ExposeSpec, ConsumeSpec, BuildSpec, ColumnSpec,
 
-    # ── Helpers ──────────────────────────────────────────────────
-    write_file_action,
+    # ── Helpers (one per role) ────────────────────────────────────
+    write_file_action,      # CustomScaffold
+    provision_action,       # InfraProvider
+    catalog_entry_action,   # CatalogAdapter
     validate_actions,
-    invoke_hook, has_hook,
 )
 ```
 

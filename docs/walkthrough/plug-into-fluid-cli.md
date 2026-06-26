@@ -79,7 +79,13 @@ extensions:
 fluid generate custom-scaffold
 ```
 
-```
+> **Illustrative output** — the lines below sketch the *shape* of a successful run
+> (resolve libraries → plan the pattern → write files). The exact wording and
+> formatting are produced by the `data-product-forge-custom-scaffold` engine and
+> may differ from what you see here; treat this as a mental model, not a literal
+> transcript.
+
+```text
 [INFO] Resolving customScaffold libraries...
 [INFO]   gitlab-ci-scaffold 0.1.0 — already installed (pypi)
 [INFO] Planning pattern: gitlab-ci:gitlab-ci
