@@ -124,8 +124,14 @@ from .roles import (
     write_file_action,
 )
 
-# Version
-from .version import SDK_VERSION
+# Version + plugin↔CLI compatibility declaration
+from .version import (
+    MAX_CLI_VERSION,
+    MIN_CLI_VERSION,
+    SDK_PROTOCOL_VERSION,
+    SDK_VERSION,
+    cli_requirement,
+)
 
 __version__ = SDK_VERSION
 
@@ -170,6 +176,10 @@ __all__ = [
     "PHASE_SCAFFOLD",
     "PHASE_CATALOG",
     "PHASE_DEFAULT",
-    # ── Version ──────────────────────────────────────────────────
+    # ── Version + compatibility ──────────────────────────────────
     "SDK_VERSION",
+    "SDK_PROTOCOL_VERSION",
+    "MIN_CLI_VERSION",
+    "MAX_CLI_VERSION",
+    "cli_requirement",
 ]

@@ -50,8 +50,12 @@ PROMISED_EXPORTS = {
     "PHASE_SCAFFOLD",
     "PHASE_CATALOG",
     "PHASE_DEFAULT",
-    # Version
+    # Version + compatibility
     "SDK_VERSION",
+    "SDK_PROTOCOL_VERSION",
+    "MIN_CLI_VERSION",
+    "MAX_CLI_VERSION",
+    "cli_requirement",
 }
 
 
