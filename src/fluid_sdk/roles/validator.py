@@ -48,7 +48,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Union
 
 from ..action import PHASE_VALIDATE, PluginAction
 from ..base import BasePlugin
-from ..domains import Severity
+from ..domains import ActionStatus, Severity
 from ..result import ExecutionResult
 
 # ---------------------------------------------------------------------------
@@ -151,7 +151,7 @@ class Validator(BasePlugin):
                 {
                     "op": action.get("op", ""),
                     "resource_id": action.get("resource_id", ""),
-                    "status": "reported",
+                    "status": ActionStatus.REPORTED.value,
                     "severity": severity.value,
                     "message": params.get("message"),
                 }

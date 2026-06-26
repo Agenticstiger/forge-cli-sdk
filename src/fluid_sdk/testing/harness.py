@@ -56,6 +56,11 @@ class PluginTestHarness:
     init_kwargs: ClassVar[Dict[str, Any]] = {}
     sample_contracts: ClassVar[List[Dict[str, Any]]] = []
     skip_apply: ClassVar[bool] = True
+    #: When False (the default), the harness REQUIRES at least one
+    #: ``sample_contract`` — otherwise the plan/apply/determinism checks would
+    #: silently pass against nothing. Set True only for a plugin whose ``plan``
+    #: genuinely ignores the contract.
+    allow_no_sample_contracts: ClassVar[bool] = False
 
     # ── helpers ──────────────────────────────────────────────────
 
@@ -69,6 +74,20 @@ class PluginTestHarness:
         assert issubclass(
             self.plugin_class, BasePlugin
         ), f"{self.plugin_class.__name__} must subclass BasePlugin"
+
+    def test_sample_contracts_present(self) -> None:
+        """Conformance must run against real input — not silently pass on empty.
+
+        The plan / determinism / serialisability / apply checks no-op when
+        ``sample_contracts`` is empty; requiring at least one (unless the plugin
+        opts out via ``allow_no_sample_contracts``) keeps the "free tests"
+        meaningful.
+        """
+        assert self.sample_contracts or self.allow_no_sample_contracts, (
+            f"{type(self).__name__} sets no sample_contracts — the plan/apply checks "
+            f"would pass against nothing. Provide at least one contract (e.g. "
+            f"LOCAL_CONTRACT) or set allow_no_sample_contracts = True."
+        )
 
     def test_name_is_valid(self) -> None:
         name = getattr(self.plugin_class, "name", None)
@@ -212,11 +231,20 @@ class PluginTestHarness:
         prov = self.get_plugin()
         for contract in self.sample_contracts:
             actions = prov.plan(contract)
+            n = len(actions)
             result = prov.apply(actions)
-            accounted = result.applied + result.failed + len(getattr(result, "results", []) or [])
-            assert accounted >= len(actions) or len(getattr(result, "results", [])) == len(
-                actions
-            ), (
-                f"apply() accounted for fewer actions than planned "
-                f"(planned={len(actions)}, applied={result.applied}, failed={result.failed})"
-            )
+            records = list(getattr(result, "results", None) or [])
+            # Exact ledger (not a >= net): every planned action is accounted for
+            # exactly once. A plugin that populates per-action ``results`` must
+            # record exactly one entry per action; otherwise its applied + failed
+            # counts must sum to exactly the planned count.
+            if records:
+                assert len(records) == n, (
+                    f"apply() must record exactly one result per planned action "
+                    f"(planned={n}, recorded={len(records)})"
+                )
+            else:
+                assert result.applied + result.failed == n, (
+                    f"apply() must account for exactly every planned action "
+                    f"(planned={n}, applied={result.applied}, failed={result.failed})"
+                )
