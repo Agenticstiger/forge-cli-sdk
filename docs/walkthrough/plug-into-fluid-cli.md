@@ -28,11 +28,10 @@ fluid plugins list
   custom_scaffold  (1)
     • gitlab-ci                    allowed
 
-  provider  (5)
+  provider  (4)
     • aws                          allowed
     • gcp                          allowed
     • local                        allowed
-    • odps                         allowed
     • snowflake                    allowed
 ```
 
