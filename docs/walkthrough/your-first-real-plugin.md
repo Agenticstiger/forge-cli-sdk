@@ -104,7 +104,9 @@ class GitLabCIScaffold(CustomScaffold):
 
     name = "gitlab-ci"
 
-    # ── identity (surfaces to `fluid plugins list`) ─────────────
+    # ── identity (descriptive metadata for registry / marketplace tooling) ──
+    # NB: these fields do NOT appear in `fluid plugins list` — that command reads
+    # entry-point names + allow/block status only and never loads the plugin.
 
     @classmethod
     def get_plugin_info(cls) -> PluginMetadata:
