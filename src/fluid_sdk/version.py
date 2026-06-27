@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-SDK_VERSION = "0.9.1"
+SDK_VERSION = "0.10.0"
 
 #: Plugin-interface protocol generation. Bump only on a breaking interface change.
 SDK_PROTOCOL_VERSION = 1

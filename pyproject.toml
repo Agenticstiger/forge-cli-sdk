@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "data-product-forge-sdk"
-version = "0.9.1"
+version = "0.10.0"
 description = "Zero-dependency SDK for building data-product-forge plugins — custom scaffolds, validators, cloud-infrastructure providers, catalog adapters. Import as `fluid_sdk`."
 readme = "README.md"
 requires-python = ">=3.10"
