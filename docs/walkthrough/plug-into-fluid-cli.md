@@ -32,6 +32,7 @@ fluid plugins list
     • aws                          allowed
     • gcp                          allowed
     • local                        allowed
+    • odps                         allowed
     • snowflake                    allowed
 ```
 
