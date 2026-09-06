@@ -38,6 +38,17 @@ jobs:
       - name: Black
         run: black --check src/ tests/
 
+      # Product Guardrail: the names of the commercial offering, held in the
+      # prose a reader of this public repo actually sees. Stdlib only, so
+      # nothing to install. --self-test runs first on purpose — a corrupt
+      # registry must fail loudly rather than quietly bless the tree — and it
+      # also verifies the vendored payload against its own content digest, so
+      # a hand-edit to it fails here, offline.
+      - name: Product Guardrail (terminology)
+        run: |
+          python3 tools/product_guardrail/check.py --self-test
+          python3 tools/product_guardrail/check.py
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
