@@ -11,4 +11,10 @@ build/
 dist/
 *.tmp~
 .DS_Store
-.claude/
+# Agent-local settings stay out of the repo, but the Product Guardrail's
+# hook config must be tracked or it exists only on the author's machine.
+# `.claude/` alone cannot be undone by a negation: git will not re-include
+# a file whose parent directory is excluded. Excluding the CONTENTS is
+# what makes the exception possible.
+.claude/*
+!.claude/settings.json
