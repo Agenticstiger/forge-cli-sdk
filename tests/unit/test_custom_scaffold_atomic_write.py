@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import pytest
 
-from fluid_sdk import CustomScaffold, ExecutionResult, write_file_action
+from fluid_sdk import CustomScaffold, ExecutionResult, PluginError, write_file_action
 from fluid_sdk.testing import CustomScaffoldTestHarness
 
 _PLAN = [write_file_action(path="a.txt", content=b"PAYLOAD").to_dict()]
@@ -347,3 +347,47 @@ def test_the_harness_check_is_vacuous_without_sample_contracts_or_an_output_root
 
     _NoContracts().test_apply_does_not_write_through_planted_symlinks()
     _NoOutputRoot().test_apply_does_not_write_through_planted_symlinks()
+
+
+def _scaffold_that_refuses_a_directory_with_files(*, clobbers_first: bool) -> type:
+    """A plugin that raises from ``apply()`` when ``output_root`` already holds anything.
+
+    With *clobbers_first* it writes through any symlink it finds before it refuses.
+    """
+
+    class _Refuses(_Scaffold):
+        name = "refusing-scaffold"
+
+        def apply(self, actions: Iterable[Mapping[str, Any]]) -> ExecutionResult:
+            found = sorted(self.output_root.iterdir())
+            if clobbers_first:
+                for path in found:
+                    if path.is_symlink():
+                        path.write_bytes(b"CLOBBERED")  # follows the link
+            if found:
+                raise PluginError("output directory is not empty")
+            return ExecutionResult(plugin=self.name, role=self.role, applied=0)
+
+    return _Refuses
+
+
+@pytest.mark.parametrize(
+    ("clobbers_first", "flagged"),
+    [(False, False), (True, True)],
+    ids=["a clean refusal passes", "a write through a link before refusing fails"],
+)
+def test_the_harness_judges_a_refusing_plugin_by_what_it_wrote(
+    clobbers_first: bool, flagged: bool
+) -> None:
+    # The planted links are files in the output directory before apply() runs: a plugin that
+    # refuses a non-empty directory is correct and must not fail this check for refusing.
+    class _Harness(CustomScaffoldTestHarness):
+        plugin_class = _scaffold_that_refuses_a_directory_with_files(clobbers_first=clobbers_first)
+        sample_contracts = [{"id": "demo"}]
+
+    check = _Harness().test_apply_does_not_write_through_planted_symlinks
+    if flagged:
+        with pytest.raises(AssertionError, match="planted symlink"):
+            check()
+    else:
+        check()

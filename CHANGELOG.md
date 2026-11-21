@@ -39,8 +39,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   plants a symlink beside each planned file at the common staging names (`<name>.tmp~`,
   `.tmp`, `~`, `.part`, `.new`, `.<name>.tmp` and `<stem>.tmp`; the class attribute
   `planted_temp_names`, which you can extend) pointing at a file outside
-  `output_root`, runs `apply()`, and asserts that file is untouched. It never plants a
-  name the plugin itself needs (a planned file or one of its directories). It is a net
+  `output_root`, runs `apply()`, and asserts that file is untouched. The links are files
+  in `output_root` before `apply()` runs, so a plugin that refuses to write into a
+  directory that already holds files may raise from `apply()`: a clean refusal passes, and
+  a write through a link fails however `apply()` ends. It never plants a name the plugin
+  itself needs (a planned file or one of its directories). It is a net
   over the common shapes, not a proof that no predictable name is used. A plugin that
   overrides `apply()` and stages files under one of those names now fails it; stage
   through `tempfile.mkstemp` as the inherited `apply()` does. The inherited `apply()`
