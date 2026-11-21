@@ -30,10 +30,10 @@ This SDK is a **library**. It does not run a server, open sockets, or interpret 
 
 ### Defensive behavior baked in
 
-- `CustomScaffold.apply` rejects path traversal (`..`) and absolute paths before any write.
+- `CustomScaffold.apply` rejects path traversal (`..`), absolute paths, and a path that names `output_root` itself before any write.
 - `CustomScaffold.apply` computes `sha256` of bytes-to-write and refuses if it doesn't match the integrity hash in the action.
 - `CustomScaffold.apply` writes atomically (`temp + os.replace`) so a crashed run leaves either the old file or the new file, never a half-written file.
-- `CustomScaffold.apply` creates that temp file with `tempfile.mkstemp` (`O_CREAT | O_EXCL`, random name) and writes the bytes and the mode through the file descriptor, so a symlink an attacker planted at a predictable sibling name (`<target>.tmp~` and the like) is never opened: the write and the mode change cannot reach a file outside `output_root`. A symlink at the target path itself is resolved before the path guard, so one that leaves `output_root` is rejected.
+- `CustomScaffold.apply` creates that temp file with `tempfile.mkstemp` (`O_CREAT | O_EXCL`, random name) and writes the bytes and the mode through the file descriptor (on Windows before Python 3.13, which has no `os.fchmod`, the mode is set by name on the fresh random file), so a symlink an attacker planted at a predictable sibling name (`<target>.tmp~` and the like) is never opened: the write and the mode change cannot reach a file outside `output_root`. A symlink at the target path itself is resolved before the path guard, so one that leaves `output_root` is rejected.
 - `validate_actions` rejects duplicate `resource_id`s and unknown `depends_on` references before any plugin sees them.
 
 ## Supported versions

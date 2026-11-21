@@ -12,7 +12,7 @@ import base64
 import os
 import stat
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import pytest
 
@@ -146,6 +146,21 @@ def test_the_temp_file_is_hidden_and_marked_tmp(tmp_path: Path, monkeypatch) -> 
     assert seen[0].startswith(".README.md.") and seen[0].endswith(".tmp~")
 
 
+def test_a_path_that_names_the_output_root_itself_is_rejected_before_any_write(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+
+    result = _write(_Scaffold(output_root=out), ".")
+
+    assert (result.applied, result.failed) == (0, 1)
+    assert "is the output root itself" in result.results[0]["error"]
+    # Nothing was created beside the output root (a temp file would have been).
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["out"]
+    assert list(out.iterdir()) == []
+
+
 # ── behaviour that must not change ───────────────────────────────────────────
 
 
@@ -176,25 +191,36 @@ def test_a_symlinked_target_that_leaves_the_root_is_still_rejected(tmp_path: Pat
 # ── the conformance harness catches the vulnerable pattern ───────────────────
 
 
-class _NaiveScaffold(CustomScaffold):
+_PREDICTABLE_STAGING = {
+    "name + .tmp~": lambda t: t.with_name(t.name + ".tmp~"),
+    "with_suffix .tmp": lambda t: t.with_suffix(".tmp"),
+    "name + .new": lambda t: t.with_name(t.name + ".new"),
+    "dot + name + .tmp": lambda t: t.with_name("." + t.name + ".tmp"),
+}
+
+
+def _naive_scaffold(stage: Callable[[Path], Path], paths: Sequence[str] = ("a.txt",)) -> type:
     """A hand-rolled ``apply()`` that stages each file at a predictable temp name."""
 
-    name = "naive-scaffold"
+    class _Naive(CustomScaffold):
+        name = "naive-scaffold"
 
-    def plan(self, contract):
-        return [write_file_action(path="a.txt", content=b"x").to_dict()]
+        def plan(self, contract):
+            return [write_file_action(path=p, content=b"x").to_dict() for p in paths]
 
-    def apply(self, actions: Iterable[Mapping[str, Any]]) -> ExecutionResult:
-        applied = 0
-        for action in actions:
-            params = action["params"]
-            target = self.output_root / params["path"]
-            target.parent.mkdir(parents=True, exist_ok=True)
-            tmp = target.with_name(target.name + ".tmp~")
-            tmp.write_bytes(base64.b64decode(params["content_b64"]))
-            os.replace(tmp, target)
-            applied += 1
-        return ExecutionResult(plugin=self.name, role=self.role, applied=applied)
+        def apply(self, actions: Iterable[Mapping[str, Any]]) -> ExecutionResult:
+            applied = 0
+            for action in actions:
+                params = action["params"]
+                target = self.output_root / params["path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                tmp = stage(target)
+                tmp.write_bytes(base64.b64decode(params["content_b64"]))
+                os.replace(tmp, target)
+                applied += 1
+            return ExecutionResult(plugin=self.name, role=self.role, applied=applied)
+
+    return _Naive
 
 
 class TestDefaultApplyConformance(CustomScaffoldTestHarness):
@@ -204,22 +230,36 @@ class TestDefaultApplyConformance(CustomScaffoldTestHarness):
     sample_contracts = [{"id": "demo"}]
 
 
-def test_the_harness_flags_an_apply_that_writes_through_a_planted_temp_symlink() -> None:
+@pytest.mark.parametrize("scheme", sorted(_PREDICTABLE_STAGING))
+def test_the_harness_flags_an_apply_that_stages_under_a_predictable_name(scheme: str) -> None:
     class _NaiveHarness(CustomScaffoldTestHarness):
-        plugin_class = _NaiveScaffold
+        plugin_class = _naive_scaffold(_PREDICTABLE_STAGING[scheme])
         sample_contracts = [{"id": "demo"}]
 
     with pytest.raises(AssertionError, match="planted symlink"):
         _NaiveHarness().test_apply_does_not_write_through_planted_symlinks()
 
 
+def test_the_harness_does_not_plant_a_name_the_plugin_itself_needs() -> None:
+    # `pkg.part` is a directory the plugin writes into, `a.tmp` would be planted twice
+    # (from a.txt and a.md): neither may break a correct plugin.
+    class _Collisions(CustomScaffoldTestHarness):
+        plugin_class = _naive_scaffold(
+            lambda t: t.with_name(f".{t.name}.{os.getpid()}.staging.invalid~"),
+            paths=("pkg", "pkg.part/mod.py", "a.txt", "a.md"),
+        )
+        sample_contracts = [{"id": "demo"}]
+
+    _Collisions().test_apply_does_not_write_through_planted_symlinks()
+
+
 def test_the_harness_check_is_vacuous_without_sample_contracts_or_an_output_root() -> None:
     class _NoContracts(CustomScaffoldTestHarness):
-        plugin_class = _NaiveScaffold
+        plugin_class = _naive_scaffold(_PREDICTABLE_STAGING["name + .tmp~"])
         allow_no_sample_contracts = True
 
     class _NoOutputRoot(CustomScaffoldTestHarness):
-        plugin_class = _NaiveScaffold
+        plugin_class = _naive_scaffold(_PREDICTABLE_STAGING["name + .tmp~"])
         sample_contracts = [{"id": "demo"}]
         requires_output_root = False
 

@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import stat
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar, List, Tuple
 
 from ..domains import Severity
@@ -43,9 +43,19 @@ class CustomScaffoldTestHarness(PluginTestHarness):
     #: Override to False if your scaffold writes outside an output_root tempdir.
     requires_output_root: ClassVar[bool] = True
 
-    #: Suffixes a hand-rolled atomic write is likely to give its temp file. The
-    #: symlink check plants a link at ``<planned path><suffix>`` for each one.
-    planted_temp_suffixes: ClassVar[Tuple[str, ...]] = (".tmp~", ".tmp", "~", ".part")
+    #: Names a hand-rolled atomic write is likely to stage a file under, as templates over
+    #: the planned file's name: ``{name}`` is the whole name, ``{stem}`` the name without its
+    #: last suffix. The symlink check plants a link at each one beside every planned file.
+    #: A best-effort net over common shapes, not a proof: add the scheme your plugin uses.
+    planted_temp_names: ClassVar[Tuple[str, ...]] = (
+        "{name}.tmp~",
+        "{name}.tmp",
+        "{name}~",
+        "{name}.part",
+        "{name}.new",
+        ".{name}.tmp",
+        "{stem}.tmp",
+    )
 
     def test_role_is_custom_scaffold(self) -> None:
         assert (
@@ -141,8 +151,9 @@ class CustomScaffoldTestHarness(PluginTestHarness):
         (``<target>.tmp~``) opens whatever is at that name, so a symlink there — a
         checked-out repository can carry one — sends the write and the ``chmod`` to a
         file outside ``output_root``. This plants a link at each name in
-        :attr:`planted_temp_suffixes` beside every planned file, points it at a file
-        outside ``output_root``, applies, and asserts that file is untouched. Stage
+        :attr:`planted_temp_names` beside every planned file, points it at a file
+        outside ``output_root``, applies, and asserts that file is untouched. It is a
+        net over the common shapes, not a proof that no predictable name is used. Stage
         through an exclusively created temp file (``tempfile.mkstemp``) instead; the
         inherited ``apply()`` does. Where the platform cannot create symlinks the
         check has nothing to plant and passes.
@@ -170,23 +181,36 @@ class CustomScaffoldTestHarness(PluginTestHarness):
     def _plant_symlinks(
         self, root: Path, out: Path, actions: List[Any]
     ) -> List[Tuple[Path, Path, bytes, int]]:
-        """Plant a link beside each planned file; return (link, victim, content, mode)."""
+        """Plant a link beside each planned file; return (link, victim, content, mode).
+
+        A name the plugin itself needs is never planted: not a planned file, not a
+        directory a planned file lives in, and not one already planted.
+        """
         planned = {
             str((a.get("params") or {}).get("path", ""))
             for a in (_as_action_dict(x) for x in actions)
             if a.get("op") == "write_file"
         }
+        usable = sorted(p for p in planned if p and not p.startswith("/") and ".." not in p)
+        needed = set(planned)
+        for rel in usable:
+            parts = PurePosixPath(rel).parts
+            needed.update("/".join(parts[:i]) for i in range(1, len(parts)))  # its directories
         victims = root / "victims"
         victims.mkdir()
         planted: List[Tuple[Path, Path, bytes, int]] = []
-        for rel in sorted(p for p in planned if p and not p.startswith("/") and ".." not in p):
-            for suffix in self.planted_temp_suffixes:
-                if rel + suffix in planned:  # a real output of the plugin, not a temp name
+        for rel in usable:
+            as_path = PurePosixPath(rel)
+            for template in self.planted_temp_names:
+                name = template.format(name=as_path.name, stem=as_path.stem)
+                candidate = (as_path.parent / name).as_posix()
+                if candidate in needed:
                     continue
+                needed.add(candidate)  # plant each name once
                 victim = victims / f"victim-{len(planted)}"
                 victim.write_bytes(b"ORIGINAL")
                 victim.chmod(0o600)
-                link = out / (rel + suffix)
+                link = out / candidate
                 link.parent.mkdir(parents=True, exist_ok=True)
                 try:
                     link.symlink_to(victim)

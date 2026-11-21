@@ -268,6 +268,10 @@ class CustomScaffold(BasePlugin):
                     raise PluginError(
                         f"write_file action {rid!r} target {rel_path!r} escapes output root"
                     )
+                if target == self.output_root:
+                    raise PluginError(
+                        f"write_file action {rid!r} target {rel_path!r} is the output root itself"
+                    )
 
                 target.parent.mkdir(parents=True, exist_ok=True)
                 payload = base64.b64decode(content_b64)

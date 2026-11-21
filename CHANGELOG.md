@@ -16,19 +16,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rename turned the output file into a symlink to it, while `apply()` reported
   success. Each file is now written through a temp file that `tempfile.mkstemp`
   creates exclusively in the target's directory (`O_CREAT | O_EXCL`, random name); the
-  bytes and the mode go through the file descriptor, and `os.replace` swaps it in. The
-  temp file is removed if anything fails. File content, the exact planned mode, the
-  path guard, error text and result shapes are unchanged.
+  bytes and the mode go through the file descriptor (on Windows before Python 3.13,
+  which has no `os.fchmod`, the mode is set by name on the fresh random file), and
+  `os.replace` swaps it in. The temp file is removed if anything fails. File content,
+  the exact planned mode, the path guard and the result shapes are unchanged. An
+  OS-level failure message (permission denied, a directory in the way) now names the
+  random temp file instead of `<target>.tmp~`.
+- A `write_file` path that names `output_root` itself is now rejected before anything
+  is created (it used to fail at the rename, after a temp file had been created beside
+  the output root).
 
 ### Added
 
 - **Conformance check: no write through a planted symlink.**
   `CustomScaffoldTestHarness.test_apply_does_not_write_through_planted_symlinks`
-  plants a symlink at each planned path plus `.tmp~`, `.tmp`, `~` and `.part` (the
-  class attribute `planted_temp_suffixes`) pointing at a file outside `output_root`,
-  runs `apply()`, and asserts that file is untouched. A plugin that overrides
-  `apply()` and stages files under a predictable temp name now fails it; stage through
-  `tempfile.mkstemp` as the inherited `apply()` does. The inherited `apply()` passes.
+  plants a symlink beside each planned file at the common staging names (`<name>.tmp~`,
+  `.tmp`, `~`, `.part`, `.new`, `.<name>.tmp` and `<stem>.tmp`; the class attribute
+  `planted_temp_names`, which you can extend) pointing at a file outside
+  `output_root`, runs `apply()`, and asserts that file is untouched. It never plants a
+  name the plugin itself needs (a planned file or one of its directories). It is a net
+  over the common shapes, not a proof that no predictable name is used. A plugin that
+  overrides `apply()` and stages files under one of those names now fails it; stage
+  through `tempfile.mkstemp` as the inherited `apply()` does. The inherited `apply()`
+  passes.
 
 ## [0.10.0] — 2026-06-27
 
