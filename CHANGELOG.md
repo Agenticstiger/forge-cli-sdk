@@ -7,6 +7,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`CustomScaffold.apply` no longer writes through a symlink planted at its temp
+  file name.** The reference `apply()` staged each file at the predictable
+  `<target>.tmp~`. A symlink planted there (a checked-out repository can carry one)
+  made the write and the `chmod` land on a file outside `output_root`, and the final
+  rename turned the output file into a symlink to it, while `apply()` reported
+  success. Each file is now written through a temp file that `tempfile.mkstemp`
+  creates exclusively in the target's directory (`O_CREAT | O_EXCL`, random name); the
+  bytes and the mode go through the file descriptor, and `os.replace` swaps it in. The
+  temp file is removed if anything fails. File content, the exact planned mode, the
+  path guard, error text and result shapes are unchanged.
+
+### Added
+
+- **Conformance check: no write through a planted symlink.**
+  `CustomScaffoldTestHarness.test_apply_does_not_write_through_planted_symlinks`
+  plants a symlink at each planned path plus `.tmp~`, `.tmp`, `~` and `.part` (the
+  class attribute `planted_temp_suffixes`) pointing at a file outside `output_root`,
+  runs `apply()`, and asserts that file is untouched. A plugin that overrides
+  `apply()` and stages files under a predictable temp name now fails it; stage through
+  `tempfile.mkstemp` as the inherited `apply()` does. The inherited `apply()` passes.
+
 ## [0.10.0] — 2026-06-27
 
 ### Changed
