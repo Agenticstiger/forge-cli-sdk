@@ -242,17 +242,52 @@ def test_the_harness_flags_an_apply_that_stages_under_a_predictable_name(scheme:
         _NaiveHarness().test_apply_does_not_write_through_planted_symlinks()
 
 
-def test_the_harness_does_not_plant_a_name_the_plugin_itself_needs() -> None:
-    # `pkg.part` is a directory the plugin writes into, `a.tmp` would be planted twice
-    # (from a.txt and a.md): neither may break a correct plugin.
-    class _Collisions(CustomScaffoldTestHarness):
+def test_the_harness_does_not_plant_over_a_directory_the_plugin_writes_into() -> None:
+    # `pkg.part` is a directory the plugin writes into: planting the `{name}.part` shape
+    # for the file `pkg` there would break a correct plugin.
+    class _Harness(CustomScaffoldTestHarness):
         plugin_class = _naive_scaffold(
             lambda t: t.with_name(f".{t.name}.{os.getpid()}.staging.invalid~"),
-            paths=("pkg", "pkg.part/mod.py", "a.txt", "a.md"),
+            paths=("pkg", "pkg.part/mod.py"),
         )
         sample_contracts = [{"id": "demo"}]
 
-    _Collisions().test_apply_does_not_write_through_planted_symlinks()
+    _Harness().test_apply_does_not_write_through_planted_symlinks()
+
+
+def test_a_name_two_files_share_does_not_end_the_check_before_the_later_files() -> None:
+    # `a.md` and `a.txt` both yield `a.tmp` (the `{stem}.tmp` shape). Planting it twice must
+    # not end the check early: only the last file here is staged under a predictable name.
+    def stage(target: Path) -> Path:
+        return target.with_name(target.name + ".tmp~") if target.name == "z.md" else target
+
+    class _Harness(CustomScaffoldTestHarness):
+        plugin_class = _naive_scaffold(stage, paths=("a.md", "a.txt", "z.md"))
+        sample_contracts = [{"id": "demo"}]
+
+    with pytest.raises(AssertionError, match="planted symlink"):
+        _Harness().test_apply_does_not_write_through_planted_symlinks()
+
+
+def test_the_harness_plants_nothing_outside_the_output_root_for_an_absolute_planned_path(
+    tmp_path: Path,
+) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    class _Absolute(CustomScaffold):
+        name = "absolute-path-scaffold"
+
+        def plan(self, contract):
+            return [write_file_action(path=str(elsewhere / "abs.txt"), content=b"x").to_dict()]
+
+    class _Harness(CustomScaffoldTestHarness):
+        plugin_class = _Absolute
+        sample_contracts = [{"id": "demo"}]
+
+    _Harness().test_apply_does_not_write_through_planted_symlinks()  # apply() rejects the path
+
+    assert list(elsewhere.iterdir()) == []
 
 
 def test_planned_paths_are_normalised_before_the_harness_picks_names_to_plant() -> None:
