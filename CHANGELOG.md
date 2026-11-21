@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-11-21
+
 ### Fixed
 
 - **`CustomScaffold.apply` no longer writes through a symlink planted at its temp
