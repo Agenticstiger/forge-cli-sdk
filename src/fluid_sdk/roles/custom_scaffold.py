@@ -133,9 +133,15 @@ def write_file_action(
 # Atomic file write
 # ---------------------------------------------------------------------------
 
-# Long enough to stay recognisable, short enough that ``.<prefix>.<random>.tmp~`` fits
-# a 255-byte file name whatever the target is called.
-_TMP_PREFIX_MAX = 100
+# The temp name only has to be recognisable, so its prefix is a short ASCII stand-in for
+# the target's name. Real names can be 255 bytes (or multi-byte), and a prefix copied
+# from one would push the temp name past the limit and fail a write that used to work.
+_TMP_PREFIX_MAX = 40
+
+
+def _tmp_prefix(name: str) -> str:
+    stub = "".join(c if c.isascii() and (c.isalnum() or c in "._-") else "_" for c in name)
+    return f".{stub[:_TMP_PREFIX_MAX]}."
 
 
 def _write_atomically(target: Path, payload: bytes, mode: int) -> None:
@@ -152,7 +158,7 @@ def _write_atomically(target: Path, payload: bytes, mode: int) -> None:
     *mode* is applied exactly (not narrowed by the umask), as it always was.
     """
     fd, tmp_name = tempfile.mkstemp(
-        dir=target.parent, prefix=f".{target.name[:_TMP_PREFIX_MAX]}.", suffix=".tmp~"
+        dir=target.parent, prefix=_tmp_prefix(target.name), suffix=".tmp~"
     )
     try:
         with os.fdopen(fd, "wb") as handle:

@@ -119,13 +119,31 @@ def test_without_fchmod_the_mode_is_set_by_name_on_the_fresh_temp_file(
     assert sorted(p.name for p in tmp_path.iterdir()) == ["run.sh"]
 
 
-def test_a_file_name_near_the_filesystem_limit_still_writes(tmp_path: Path) -> None:
-    name = "n" * 240 + ".txt"  # the temp name is longer than the target's: it must still fit
-
+@pytest.mark.parametrize("name", ["n" * 240 + ".txt", "字" * 82, "weird name (1) é.txt"])
+def test_long_multibyte_and_odd_file_names_still_write(tmp_path: Path, name: str) -> None:
+    # The temp name must not be longer than the target's, or a name near the 255-byte limit
+    # (in bytes, not characters) would start to fail.
     result = _write(_Scaffold(output_root=tmp_path), name)
 
     assert (result.applied, result.failed) == (1, 0)
     assert (tmp_path / name).read_bytes() == b"PAYLOAD"
+    assert len(list(tmp_path.iterdir())) == 1
+
+
+def test_the_temp_file_is_hidden_and_marked_tmp(tmp_path: Path, monkeypatch) -> None:
+    seen = []
+    real_replace = os.replace
+
+    def spy(src, dst):
+        seen.append(Path(src).name)
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", spy)
+
+    _write(_Scaffold(output_root=tmp_path), "docs/README.md")
+
+    assert len(seen) == 1
+    assert seen[0].startswith(".README.md.") and seen[0].endswith(".tmp~")
 
 
 # ── behaviour that must not change ───────────────────────────────────────────
