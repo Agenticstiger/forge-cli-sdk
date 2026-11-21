@@ -155,7 +155,9 @@ def _write_atomically(target: Path, payload: bytes, mode: int) -> None:
     :func:`os.replace` swaps the temp file in, so a crashed run leaves the old file or
     the new one, never a half-written file. The temp file is removed if anything fails.
 
-    *mode* is applied exactly (not narrowed by the umask), as it always was.
+    *mode* is applied exactly (not narrowed by the umask), as it always was. That includes
+    the setuid and setgid bits, so the bytes are flushed first: a write that reached the
+    kernel after the mode was set (the buffered bytes, at close) makes it drop those bits.
     """
     fd, tmp_name = tempfile.mkstemp(
         dir=target.parent, prefix=_tmp_prefix(target.name), suffix=".tmp~"
@@ -163,6 +165,8 @@ def _write_atomically(target: Path, payload: bytes, mode: int) -> None:
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
+            # Every byte is written before the mode is set: a write after it clears setuid.
+            handle.flush()
             if hasattr(os, "fchmod"):
                 os.fchmod(handle.fileno(), mode)
         if not hasattr(os, "fchmod"):  # Windows before Python 3.13

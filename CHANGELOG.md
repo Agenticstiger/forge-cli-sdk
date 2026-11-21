@@ -25,6 +25,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A `write_file` path that names `output_root` itself is now rejected before anything
   is created (it used to fail at the rename, after a temp file had been created beside
   the output root).
+- **A planned setuid or setgid bit is applied as planned.** With the temp-file write
+  above, a payload that fits the write buffer (the file system's block size, typically
+  4 KiB; 128 KiB from Python 3.14) reached the kernel when the file closed, after
+  `fchmod`, and a write by an unprivileged process makes the kernel drop those bits, so a
+  planned `0o4755` landed as `0o755` (the mode used to be set after the write). The bytes
+  are now flushed before the mode is set.
 
 ### Added
 
@@ -33,8 +39,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   plants a symlink beside each planned file at the common staging names (`<name>.tmp~`,
   `.tmp`, `~`, `.part`, `.new`, `.<name>.tmp` and `<stem>.tmp`; the class attribute
   `planted_temp_names`, which you can extend) pointing at a file outside
-  `output_root`, runs `apply()`, and asserts that file is untouched. It never plants a
-  name the plugin itself needs (a planned file or one of its directories). It is a net
+  `output_root`, runs `apply()`, and asserts that file is untouched. The links are files
+  in `output_root` before `apply()` runs, so a plugin that refuses to write into a
+  directory that already holds files may raise from `apply()`: a clean refusal passes, and
+  a write through a link fails however `apply()` ends. It never plants a name the plugin
+  itself needs (a planned file or one of its directories). It is a net
   over the common shapes, not a proof that no predictable name is used. A plugin that
   overrides `apply()` and stages files under one of those names now fails it; stage
   through `tempfile.mkstemp` as the inherited `apply()` does. The inherited `apply()`

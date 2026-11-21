@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import pytest
 
-from fluid_sdk import CustomScaffold, ExecutionResult, write_file_action
+from fluid_sdk import CustomScaffold, ExecutionResult, PluginError, write_file_action
 from fluid_sdk.testing import CustomScaffoldTestHarness
 
 _PLAN = [write_file_action(path="a.txt", content=b"PAYLOAD").to_dict()]
@@ -104,6 +104,28 @@ def test_the_planned_mode_is_applied_exactly_whatever_the_umask(tmp_path: Path, 
         os.umask(previous)
 
     assert stat.S_IMODE((tmp_path / "run.sh").stat().st_mode) == mode
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
+@pytest.mark.parametrize("mode", [0o4755, 0o2755, 0o6755], ids=["setuid", "setgid", "both"])
+def test_setuid_and_setgid_bits_of_the_planned_mode_survive_the_write(
+    tmp_path: Path, mode: int
+) -> None:
+    # A payload that fits the write buffer (the file system's block size; 128 KiB from Python
+    # 3.14) used to reach the kernel when the handle closed, after fchmod, and a write by an
+    # unprivileged process makes the kernel drop these bits: 0o4755 landed as 0o755. A payload
+    # larger than the buffer is written through at once, so this one is small.
+    probe = tmp_path / "probe"
+    probe.write_bytes(b"")
+    probe.chmod(mode)
+    if stat.S_IMODE(probe.stat().st_mode) != mode:
+        pytest.skip("this user or file system cannot set the bit")
+
+    result = _write(_Scaffold(output_root=tmp_path), "tool", b"#!/bin/sh\n", mode=mode)
+
+    assert (result.applied, result.failed) == (1, 0)
+    assert stat.S_IMODE((tmp_path / "tool").stat().st_mode) == mode
+    assert (tmp_path / "tool").read_bytes() == b"#!/bin/sh\n"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
@@ -325,3 +347,47 @@ def test_the_harness_check_is_vacuous_without_sample_contracts_or_an_output_root
 
     _NoContracts().test_apply_does_not_write_through_planted_symlinks()
     _NoOutputRoot().test_apply_does_not_write_through_planted_symlinks()
+
+
+def _scaffold_that_refuses_a_directory_with_files(*, clobbers_first: bool) -> type:
+    """A plugin that raises from ``apply()`` when ``output_root`` already holds anything.
+
+    With *clobbers_first* it writes through any symlink it finds before it refuses.
+    """
+
+    class _Refuses(_Scaffold):
+        name = "refusing-scaffold"
+
+        def apply(self, actions: Iterable[Mapping[str, Any]]) -> ExecutionResult:
+            found = sorted(self.output_root.iterdir())
+            if clobbers_first:
+                for path in found:
+                    if path.is_symlink():
+                        path.write_bytes(b"CLOBBERED")  # follows the link
+            if found:
+                raise PluginError("output directory is not empty")
+            return ExecutionResult(plugin=self.name, role=self.role, applied=0)
+
+    return _Refuses
+
+
+@pytest.mark.parametrize(
+    ("clobbers_first", "flagged"),
+    [(False, False), (True, True)],
+    ids=["a clean refusal passes", "a write through a link before refusing fails"],
+)
+def test_the_harness_judges_a_refusing_plugin_by_what_it_wrote(
+    clobbers_first: bool, flagged: bool
+) -> None:
+    # The planted links are files in the output directory before apply() runs: a plugin that
+    # refuses a non-empty directory is correct and must not fail this check for refusing.
+    class _Harness(CustomScaffoldTestHarness):
+        plugin_class = _scaffold_that_refuses_a_directory_with_files(clobbers_first=clobbers_first)
+        sample_contracts = [{"id": "demo"}]
+
+    check = _Harness().test_apply_does_not_write_through_planted_symlinks
+    if flagged:
+        with pytest.raises(AssertionError, match="planted symlink"):
+            check()
+    else:
+        check()

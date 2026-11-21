@@ -18,6 +18,7 @@ pytest auto-discovers every ``test_*`` method.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import stat
 import tempfile
@@ -204,7 +205,12 @@ class CustomScaffoldTestHarness(PluginTestHarness):
                 assert ".." not in path.split("/"), f"Path traversal forbidden: {path!r}"
 
     def test_apply_does_not_write_through_planted_symlinks(self) -> None:
-        """A symlink planted at a temp name beside an output file must not be followed."""
+        """A symlink planted at a temp name beside an output file must not be followed.
+
+        The planted links are files in ``output_root`` before ``apply()`` runs, so a plugin that
+        refuses to write into a directory that already holds files may raise from it: a clean
+        refusal passes. What fails is a write through a link, however ``apply()`` ends.
+        """
         if not self.sample_contracts or not self.requires_output_root:
             return
         for contract in self.sample_contracts:
@@ -215,7 +221,9 @@ class CustomScaffoldTestHarness(PluginTestHarness):
                 prov = self.get_plugin(output_root=out)
                 actions = prov.plan(contract)
                 planted = _plant_symlinks(root, out, actions, self.planted_temp_names)
-                prov.apply(actions)
+                # A refusal is fine (the links make the directory non-empty); a write through one is not.
+                with contextlib.suppress(Exception):
+                    prov.apply(actions)
                 _assert_untouched(planted)
 
 
