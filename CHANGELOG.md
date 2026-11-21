@@ -25,6 +25,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A `write_file` path that names `output_root` itself is now rejected before anything
   is created (it used to fail at the rename, after a temp file had been created beside
   the output root).
+- **A planned setuid or setgid bit is applied as planned.** With the temp-file write
+  above, a payload that fits the write buffer (the file system's block size, typically
+  4 KiB; 128 KiB from Python 3.14) reached the kernel when the file closed, after
+  `fchmod`, and a write by an unprivileged process makes the kernel drop those bits, so a
+  planned `0o4755` landed as `0o755` (the mode used to be set after the write). The bytes
+  are now flushed before the mode is set.
 
 ### Added
 

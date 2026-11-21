@@ -107,6 +107,28 @@ def test_the_planned_mode_is_applied_exactly_whatever_the_umask(tmp_path: Path, 
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
+@pytest.mark.parametrize("mode", [0o4755, 0o2755, 0o6755], ids=["setuid", "setgid", "both"])
+def test_setuid_and_setgid_bits_of_the_planned_mode_survive_the_write(
+    tmp_path: Path, mode: int
+) -> None:
+    # A payload that fits the write buffer (the file system's block size; 128 KiB from Python
+    # 3.14) used to reach the kernel when the handle closed, after fchmod, and a write by an
+    # unprivileged process makes the kernel drop these bits: 0o4755 landed as 0o755. A payload
+    # larger than the buffer is written through at once, so this one is small.
+    probe = tmp_path / "probe"
+    probe.write_bytes(b"")
+    probe.chmod(mode)
+    if stat.S_IMODE(probe.stat().st_mode) != mode:
+        pytest.skip("this user or file system cannot set the bit")
+
+    result = _write(_Scaffold(output_root=tmp_path), "tool", b"#!/bin/sh\n", mode=mode)
+
+    assert (result.applied, result.failed) == (1, 0)
+    assert stat.S_IMODE((tmp_path / "tool").stat().st_mode) == mode
+    assert (tmp_path / "tool").read_bytes() == b"#!/bin/sh\n"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
 def test_without_fchmod_the_mode_is_set_by_name_on_the_fresh_temp_file(
     tmp_path: Path, monkeypatch
 ) -> None:
