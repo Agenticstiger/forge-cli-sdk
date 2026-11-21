@@ -37,9 +37,15 @@ def _plant_symlinks(
 ) -> List[Tuple[Path, Path, bytes, int]]:
     """Plant a link beside each planned file; return (link, victim, content, mode).
 
-    *names* are templates over the planned file's ``{name}`` and ``{stem}``. A name the
-    plugin itself needs is never planted: not a planned file, not a directory a planned
-    file lives in, and not one already planted.
+    A scaffold that stages each file under a predictable temp name (``<target>.tmp~``)
+    opens whatever is at that name, so a symlink there — a checked-out repository can
+    carry one — sends the write and the ``chmod`` to a file outside ``output_root``.
+    Each link points at a victim file outside it. *names* are templates over the planned
+    file's ``{name}`` and ``{stem}``. A name the plugin itself needs is never planted: not
+    a planned file, not a directory a planned file lives in, and not one already planted.
+    This is a net over the common shapes, not a proof that no predictable name is used;
+    where the platform cannot create symlinks there is nothing to plant and the check
+    passes.
     """
     planned = {
         PurePosixPath(str((a.get("params") or {}).get("path", ""))).as_posix()
@@ -74,6 +80,15 @@ def _plant_symlinks(
                 return planted
             planted.append((link, victim, b"ORIGINAL", stat.S_IMODE(os.stat(victim).st_mode)))
     return planted
+
+
+def _assert_untouched(planted: List[Tuple[Path, Path, bytes, int]]) -> None:
+    for link, victim, content, mode in planted:
+        assert victim.read_bytes() == content and stat.S_IMODE(victim.stat().st_mode) == mode, (
+            f"apply() followed a planted symlink at {link.name!r} and modified a file "
+            f"outside output_root — write through an exclusively created temp file "
+            f"(tempfile.mkstemp), never a predictable name"
+        )
 
 
 class CustomScaffoldTestHarness(PluginTestHarness):
@@ -189,19 +204,7 @@ class CustomScaffoldTestHarness(PluginTestHarness):
                 assert ".." not in path.split("/"), f"Path traversal forbidden: {path!r}"
 
     def test_apply_does_not_write_through_planted_symlinks(self) -> None:
-        """``apply()`` must not follow a symlink planted next to an output file.
-
-        A scaffold that stages each file under a predictable temp name
-        (``<target>.tmp~``) opens whatever is at that name, so a symlink there — a
-        checked-out repository can carry one — sends the write and the ``chmod`` to a
-        file outside ``output_root``. This plants a link at each name in
-        :attr:`planted_temp_names` beside every planned file, points it at a file
-        outside ``output_root``, applies, and asserts that file is untouched. It is a
-        net over the common shapes, not a proof that no predictable name is used. Stage
-        through an exclusively created temp file (``tempfile.mkstemp``) instead; the
-        inherited ``apply()`` does. Where the platform cannot create symlinks the
-        check has nothing to plant and passes.
-        """
+        """A symlink planted at a temp name beside an output file must not be followed."""
         if not self.sample_contracts or not self.requires_output_root:
             return
         for contract in self.sample_contracts:
@@ -213,14 +216,7 @@ class CustomScaffoldTestHarness(PluginTestHarness):
                 actions = prov.plan(contract)
                 planted = _plant_symlinks(root, out, actions, self.planted_temp_names)
                 prov.apply(actions)
-                for link, victim, content, mode in planted:
-                    assert victim.read_bytes() == content and (
-                        stat.S_IMODE(victim.stat().st_mode) == mode
-                    ), (
-                        f"apply() followed a planted symlink at {link.name!r} and modified "
-                        f"a file outside output_root — write through an exclusively created "
-                        f"temp file (tempfile.mkstemp), never a predictable name"
-                    )
+                _assert_untouched(planted)
 
 
 class ValidatorTestHarness(PluginTestHarness):
