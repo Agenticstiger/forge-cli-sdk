@@ -19,6 +19,8 @@ import pytest
 from fluid_sdk import CustomScaffold, ExecutionResult, write_file_action
 from fluid_sdk.testing import CustomScaffoldTestHarness
 
+_PLAN = [write_file_action(path="a.txt", content=b"PAYLOAD").to_dict()]
+
 
 class _Scaffold(CustomScaffold):
     """Default ``apply()``; the plan is irrelevant to these tests."""
@@ -26,7 +28,7 @@ class _Scaffold(CustomScaffold):
     name = "atomic-write-scaffold"
 
     def plan(self, contract):
-        return [write_file_action(path="a.txt", content=b"PAYLOAD").to_dict()]
+        return list(_PLAN)
 
 
 def _victim(root: Path) -> Path:
@@ -251,6 +253,29 @@ def test_the_harness_does_not_plant_a_name_the_plugin_itself_needs() -> None:
         sample_contracts = [{"id": "demo"}]
 
     _Collisions().test_apply_does_not_write_through_planted_symlinks()
+
+
+def test_planned_paths_are_normalised_before_the_harness_picks_names_to_plant() -> None:
+    # `./x.tmp` is a planned file, and `x.txt` would make the harness plant `x.tmp` (the
+    # `{stem}.tmp` shape): a plugin that writes its targets directly must not be failed
+    # for writing a file it planned.
+    class _DirectWriter(CustomScaffold):
+        name = "direct-writer"
+
+        def plan(self, contract):
+            return [write_file_action(path=p, content=b"x").to_dict() for p in ("./x.tmp", "x.txt")]
+
+        def apply(self, actions: Iterable[Mapping[str, Any]]) -> ExecutionResult:
+            for action in actions:
+                target = self.output_root / action["params"]["path"]
+                target.write_bytes(base64.b64decode(action["params"]["content_b64"]))
+            return ExecutionResult(plugin=self.name, role=self.role, applied=2)
+
+    class _Harness(CustomScaffoldTestHarness):
+        plugin_class = _DirectWriter
+        sample_contracts = [{"id": "demo"}]
+
+    _Harness().test_apply_does_not_write_through_planted_symlinks()
 
 
 def test_the_harness_check_is_vacuous_without_sample_contracts_or_an_output_root() -> None:

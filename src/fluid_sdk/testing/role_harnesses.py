@@ -32,6 +32,50 @@ from ..roles.validator import Validator
 from .harness import PluginTestHarness, _as_action_dict
 
 
+def _plant_symlinks(
+    root: Path, out: Path, actions: List[Any], names: Tuple[str, ...]
+) -> List[Tuple[Path, Path, bytes, int]]:
+    """Plant a link beside each planned file; return (link, victim, content, mode).
+
+    *names* are templates over the planned file's ``{name}`` and ``{stem}``. A name the
+    plugin itself needs is never planted: not a planned file, not a directory a planned
+    file lives in, and not one already planted.
+    """
+    planned = {
+        PurePosixPath(str((a.get("params") or {}).get("path", ""))).as_posix()
+        for a in (_as_action_dict(x) for x in actions)
+        if a.get("op") == "write_file"
+    }
+    usable = sorted(p for p in planned if p not in ("", ".") and not p.startswith("/"))
+    usable = [p for p in usable if ".." not in PurePosixPath(p).parts]
+    needed = set(planned)
+    for rel in usable:
+        parts = PurePosixPath(rel).parts
+        needed.update("/".join(parts[:i]) for i in range(1, len(parts)))  # its directories
+    victims = root / "victims"
+    victims.mkdir()
+    planted: List[Tuple[Path, Path, bytes, int]] = []
+    for rel in usable:
+        as_path = PurePosixPath(rel)
+        for template in names:
+            candidate = as_path.parent / template.format(name=as_path.name, stem=as_path.stem)
+            candidate_rel = candidate.as_posix()
+            if candidate_rel in needed:
+                continue
+            needed.add(candidate_rel)  # plant each name once
+            victim = victims / f"victim-{len(planted)}"
+            victim.write_bytes(b"ORIGINAL")
+            victim.chmod(0o600)
+            link = out / candidate_rel
+            link.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                link.symlink_to(victim)
+            except (OSError, NotImplementedError):  # e.g. Windows without the privilege
+                return planted
+            planted.append((link, victim, b"ORIGINAL", stat.S_IMODE(os.stat(victim).st_mode)))
+    return planted
+
+
 class CustomScaffoldTestHarness(PluginTestHarness):
     """Conformance harness for custom-scaffold plugins.
 
@@ -167,7 +211,7 @@ class CustomScaffoldTestHarness(PluginTestHarness):
                 out.mkdir()
                 prov = self.get_plugin(output_root=out)
                 actions = prov.plan(contract)
-                planted = self._plant_symlinks(root, out, actions)
+                planted = _plant_symlinks(root, out, actions, self.planted_temp_names)
                 prov.apply(actions)
                 for link, victim, content, mode in planted:
                     assert victim.read_bytes() == content and (
@@ -177,47 +221,6 @@ class CustomScaffoldTestHarness(PluginTestHarness):
                         f"a file outside output_root — write through an exclusively created "
                         f"temp file (tempfile.mkstemp), never a predictable name"
                     )
-
-    def _plant_symlinks(
-        self, root: Path, out: Path, actions: List[Any]
-    ) -> List[Tuple[Path, Path, bytes, int]]:
-        """Plant a link beside each planned file; return (link, victim, content, mode).
-
-        A name the plugin itself needs is never planted: not a planned file, not a
-        directory a planned file lives in, and not one already planted.
-        """
-        planned = {
-            str((a.get("params") or {}).get("path", ""))
-            for a in (_as_action_dict(x) for x in actions)
-            if a.get("op") == "write_file"
-        }
-        usable = sorted(p for p in planned if p and not p.startswith("/") and ".." not in p)
-        needed = set(planned)
-        for rel in usable:
-            parts = PurePosixPath(rel).parts
-            needed.update("/".join(parts[:i]) for i in range(1, len(parts)))  # its directories
-        victims = root / "victims"
-        victims.mkdir()
-        planted: List[Tuple[Path, Path, bytes, int]] = []
-        for rel in usable:
-            as_path = PurePosixPath(rel)
-            for template in self.planted_temp_names:
-                name = template.format(name=as_path.name, stem=as_path.stem)
-                candidate = (as_path.parent / name).as_posix()
-                if candidate in needed:
-                    continue
-                needed.add(candidate)  # plant each name once
-                victim = victims / f"victim-{len(planted)}"
-                victim.write_bytes(b"ORIGINAL")
-                victim.chmod(0o600)
-                link = out / candidate
-                link.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    link.symlink_to(victim)
-                except (OSError, NotImplementedError):  # e.g. Windows without the privilege
-                    return planted
-                planted.append((link, victim, b"ORIGINAL", stat.S_IMODE(os.stat(victim).st_mode)))
-        return planted
 
 
 class ValidatorTestHarness(PluginTestHarness):
