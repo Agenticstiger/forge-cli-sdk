@@ -55,6 +55,7 @@ All of the above, plus:
 - `apply()` writes the expected number of files to a tempdir under `output_root`.
 - **Re-applying** the same actions produces byte-identical output (idempotency).
 - No action's `params.path` is absolute or contains `..` (path-traversal safety).
+- `apply()` does not write through a symlink planted beside an output file: a link at a common staging name (`<name>.tmp~`, `.tmp`, `~`, `.part`, `.new`, `.<name>.tmp`, `<stem>.tmp` — the class attribute `planted_temp_names`, which you can extend) pointing at a file outside `output_root` stays untouched. A net over the common shapes, not a proof. Stage files through `tempfile.mkstemp`, as the inherited `apply()` does, not under a predictable temp name.
 
 ### `InfraProviderTestHarness`
 

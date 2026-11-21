@@ -97,7 +97,7 @@ class GitHubActionsScaffold(CustomScaffold):
 2. Verifies the sha256 hash matches what `plan()` recorded.
 3. Resolves the target path under `output_root` and rejects path-traversal attempts.
 4. Creates parent directories.
-5. Writes via tmpfile + atomic rename.
+5. Writes via an exclusively created tmpfile (a random name, never a predictable one, so a planted symlink is never followed) + atomic rename.
 6. Chmod's per `params.mode`.
 7. Returns an `ExecutionResult` with `applied` / `failed` counts + `artifacts` paths.
 

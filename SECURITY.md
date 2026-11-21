@@ -19,7 +19,7 @@ You should hear back within 3 business days. We aim to ship a fix and a CVE (whe
 This SDK is a **library**. It does not run a server, open sockets, or interpret untrusted code on its own. What it does:
 
 - **Defines plugin ABCs.** Downstream plugins inherit from `BasePlugin` and the four role classes (`CustomScaffold`, `Validator`, `InfraProvider`, `CatalogAdapter`).
-- **Provides a reference `CustomScaffold.apply`** that writes files to disk. The reference implementation is defensive: it rejects absolute paths and `..` traversal in destination paths, computes and verifies `sha256` integrity before write, and writes atomically via `os.replace`. See `src/fluid_sdk/roles/custom_scaffold.py`.
+- **Provides a reference `CustomScaffold.apply`** that writes files to disk. The reference implementation is defensive: it rejects absolute paths and `..` traversal in destination paths, computes and verifies `sha256` integrity before write, and writes atomically: the bytes go to a temp file created exclusively in the target's directory, which is then renamed into place with `os.replace`. See `src/fluid_sdk/roles/custom_scaffold.py`.
 - **Provides `ContractHelper`** — a read-only parser over fluid contract dicts. No code execution, no eval, no YAML loading.
 
 ### What the SDK is **not** responsible for
@@ -30,9 +30,10 @@ This SDK is a **library**. It does not run a server, open sockets, or interpret 
 
 ### Defensive behavior baked in
 
-- `CustomScaffold.apply` rejects path traversal (`..`) and absolute paths before any write.
+- `CustomScaffold.apply` rejects path traversal (`..`), absolute paths, and a path that names `output_root` itself before any write.
 - `CustomScaffold.apply` computes `sha256` of bytes-to-write and refuses if it doesn't match the integrity hash in the action.
 - `CustomScaffold.apply` writes atomically (`temp + os.replace`) so a crashed run leaves either the old file or the new file, never a half-written file.
+- `CustomScaffold.apply` creates that temp file with `tempfile.mkstemp` (`O_CREAT | O_EXCL`, random name) and writes the bytes and the mode through the file descriptor (on Windows before Python 3.13, which has no `os.fchmod`, the mode is set by name on the fresh random file), so a symlink an attacker planted at a predictable sibling name (`<target>.tmp~` and the like) is never opened: the write and the mode change cannot reach a file outside `output_root`. A symlink at the target path itself is resolved before the path guard, so one that leaves `output_root` is rejected.
 - `validate_actions` rejects duplicate `resource_id`s and unknown `depends_on` references before any plugin sees them.
 
 ## Supported versions
