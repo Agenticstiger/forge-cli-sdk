@@ -3,7 +3,8 @@
 Each adds checks beyond the universal :class:`PluginTestHarness`:
 
 * :class:`CustomScaffoldTestHarness` — byte-identical determinism, idempotency
-  of repeated apply, path-traversal safety on every ``write_file`` action.
+  of repeated apply, path-traversal safety on every ``write_file`` action, and no
+  write through a symlink planted next to an output file.
 * :class:`ValidatorTestHarness` — findings carry a recognised severity; apply is
   exercised (validators are side-effect-free).
 * :class:`InfraProviderTestHarness` — role/subclass conformance for cloud
@@ -17,9 +18,11 @@ pytest auto-discovers every ``test_*`` method.
 
 from __future__ import annotations
 
+import os
+import stat
 import tempfile
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar, List, Tuple
 
 from ..domains import Severity
 from ..roles.catalog_adapter import CatalogAdapter
@@ -32,12 +35,17 @@ from .harness import PluginTestHarness, _as_action_dict
 class CustomScaffoldTestHarness(PluginTestHarness):
     """Conformance harness for custom-scaffold plugins.
 
-    Adds determinism + idempotency assertions and a path-traversal check
-    against every generated ``write_file`` action.
+    Adds determinism + idempotency assertions, a path-traversal check
+    against every generated ``write_file`` action, and a check that ``apply()``
+    does not write through a symlink planted next to an output file.
     """
 
     #: Override to False if your scaffold writes outside an output_root tempdir.
     requires_output_root: ClassVar[bool] = True
+
+    #: Suffixes a hand-rolled atomic write is likely to give its temp file. The
+    #: symlink check plants a link at ``<planned path><suffix>`` for each one.
+    planted_temp_suffixes: ClassVar[Tuple[str, ...]] = (".tmp~", ".tmp", "~", ".part")
 
     def test_role_is_custom_scaffold(self) -> None:
         assert (
@@ -125,6 +133,67 @@ class CustomScaffoldTestHarness(PluginTestHarness):
                 path = str(params.get("path", ""))
                 assert not path.startswith("/"), f"Absolute path forbidden: {path!r}"
                 assert ".." not in path.split("/"), f"Path traversal forbidden: {path!r}"
+
+    def test_apply_does_not_write_through_planted_symlinks(self) -> None:
+        """``apply()`` must not follow a symlink planted next to an output file.
+
+        A scaffold that stages each file under a predictable temp name
+        (``<target>.tmp~``) opens whatever is at that name, so a symlink there — a
+        checked-out repository can carry one — sends the write and the ``chmod`` to a
+        file outside ``output_root``. This plants a link at each name in
+        :attr:`planted_temp_suffixes` beside every planned file, points it at a file
+        outside ``output_root``, applies, and asserts that file is untouched. Stage
+        through an exclusively created temp file (``tempfile.mkstemp``) instead; the
+        inherited ``apply()`` does. Where the platform cannot create symlinks the
+        check has nothing to plant and passes.
+        """
+        if not self.sample_contracts or not self.requires_output_root:
+            return
+        for contract in self.sample_contracts:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                out = root / "out"
+                out.mkdir()
+                prov = self.get_plugin(output_root=out)
+                actions = prov.plan(contract)
+                planted = self._plant_symlinks(root, out, actions)
+                prov.apply(actions)
+                for link, victim, content, mode in planted:
+                    assert victim.read_bytes() == content and (
+                        stat.S_IMODE(victim.stat().st_mode) == mode
+                    ), (
+                        f"apply() followed a planted symlink at {link.name!r} and modified "
+                        f"a file outside output_root — write through an exclusively created "
+                        f"temp file (tempfile.mkstemp), never a predictable name"
+                    )
+
+    def _plant_symlinks(
+        self, root: Path, out: Path, actions: List[Any]
+    ) -> List[Tuple[Path, Path, bytes, int]]:
+        """Plant a link beside each planned file; return (link, victim, content, mode)."""
+        planned = {
+            str((a.get("params") or {}).get("path", ""))
+            for a in (_as_action_dict(x) for x in actions)
+            if a.get("op") == "write_file"
+        }
+        victims = root / "victims"
+        victims.mkdir()
+        planted: List[Tuple[Path, Path, bytes, int]] = []
+        for rel in sorted(p for p in planned if p and not p.startswith("/") and ".." not in p):
+            for suffix in self.planted_temp_suffixes:
+                if rel + suffix in planned:  # a real output of the plugin, not a temp name
+                    continue
+                victim = victims / f"victim-{len(planted)}"
+                victim.write_bytes(b"ORIGINAL")
+                victim.chmod(0o600)
+                link = out / (rel + suffix)
+                link.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    link.symlink_to(victim)
+                except (OSError, NotImplementedError):  # e.g. Windows without the privilege
+                    return planted
+                planted.append((link, victim, b"ORIGINAL", stat.S_IMODE(os.stat(victim).st_mode)))
+        return planted
 
 
 class ValidatorTestHarness(PluginTestHarness):

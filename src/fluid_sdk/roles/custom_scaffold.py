@@ -48,9 +48,11 @@ Register via entry-point::
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import os
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -128,6 +130,45 @@ def write_file_action(
 
 
 # ---------------------------------------------------------------------------
+# Atomic file write
+# ---------------------------------------------------------------------------
+
+# Long enough to stay recognisable, short enough that ``.<prefix>.<random>.tmp~`` fits
+# a 255-byte file name whatever the target is called.
+_TMP_PREFIX_MAX = 100
+
+
+def _write_atomically(target: Path, payload: bytes, mode: int) -> None:
+    """Write *payload* to *target* through a temp file that is never a pre-existing name.
+
+    The temp file is created with :func:`tempfile.mkstemp` in the target's own
+    directory: ``O_CREAT | O_EXCL`` with a random name, so a symlink planted at any
+    name (the old predictable ``<target>.tmp~`` included) is never opened and can
+    neither redirect the write nor the ``chmod`` to a file outside the output
+    directory. The bytes and the mode go through the file descriptor, then
+    :func:`os.replace` swaps the temp file in, so a crashed run leaves the old file or
+    the new one, never a half-written file. The temp file is removed if anything fails.
+
+    *mode* is applied exactly (not narrowed by the umask), as it always was.
+    """
+    fd, tmp_name = tempfile.mkstemp(
+        dir=target.parent, prefix=f".{target.name[:_TMP_PREFIX_MAX]}.", suffix=".tmp~"
+    )
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), mode)
+        if not hasattr(os, "fchmod"):  # Windows before Python 3.13
+            os.chmod(tmp_name, mode)  # the name is random and was created by us just now
+        os.replace(tmp_name, target)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp_name)
+        raise
+
+
+# ---------------------------------------------------------------------------
 # CustomScaffold ABC
 # ---------------------------------------------------------------------------
 
@@ -142,7 +183,8 @@ class CustomScaffold(BasePlugin):
       ``auth=False``, ``streaming=False``).
     * A reference :meth:`apply` implementation that writes ``write_file``
       actions to disk safely (path-traversal guarded, parent-dirs created,
-      atomic via temp-file rename).
+      atomic via an exclusively created temp file and a rename — a symlink
+      planted at a temp-style name is never followed).
 
     Subclasses can override :meth:`apply` entirely; the default just
     materialises ``write_file`` actions.
@@ -171,6 +213,12 @@ class CustomScaffold(BasePlugin):
         """Reference implementation: walk ``write_file`` actions and write
         each to disk under :attr:`output_root`, atomically and with
         path-traversal protection.
+
+        Each file is written through a temp file that :func:`tempfile.mkstemp`
+        creates exclusively in the target's directory, then renamed into place, so
+        a symlink an attacker planted at a predictable sibling name (``<name>.tmp~``
+        and the like) is never opened: the write and the mode change cannot reach a
+        file outside :attr:`output_root`.
 
         Plugins that need different semantics (e.g. dry-run, in-memory
         capture, archive output) override this entirely.
@@ -225,11 +273,7 @@ class CustomScaffold(BasePlugin):
                             f"(plan={expected_sha} apply={actual_sha})"
                         )
 
-                # Atomic write: tmp file + rename.
-                tmp = target.with_suffix(target.suffix + ".tmp~")
-                tmp.write_bytes(payload)
-                os.chmod(tmp, mode)
-                os.replace(tmp, target)
+                _write_atomically(target, payload, mode)
 
                 applied += 1
                 artifacts.append(str(target))
