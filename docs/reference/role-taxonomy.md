@@ -1,6 +1,6 @@
 # Role taxonomy
 
-`data-product-forge-sdk` (import path `fluid_sdk`) ships four built-in plugin roles. Each is a thin subclass of `BasePlugin` that pins a `role` tag, sets role-appropriate capability defaults, and provides role-specific helpers. The four are summarised here.
+`data-product-forge-sdk` (import path `fluid_sdk`) ships seven built-in plugin roles. Four (`InfraProvider`, `CustomScaffold`, `Validator`, `CatalogAdapter`) are thin subclasses of `BasePlugin` that pin a `role` tag, set role-appropriate capability defaults, and provide role-specific helpers. Three more (`AlertNotifier`, `MaintenanceAction`, `CommandPlugin`) describe plugin groups with no `plan` / `apply` lifecycle: plain classes with forge-cli's own attribute names and signatures. They are summarised here and covered in full in [plugin-groups.md](plugin-groups.md).
 
 ## When to pick which
 
@@ -18,6 +18,16 @@ Are you... ?
 │
 ├── Syncing product metadata to an external catalog (DataHub, Atlan, ...)
 │     → CatalogAdapter         (entry-point: fluid_build.catalog_adapters)
+│
+├── Adding where a generated DAG sends its alerts (Teams, a pager, ...)
+│     → AlertNotifier          (entry-point: fluid_build.alert_notifiers, forge-cli 0.38.0+)
+│       an organisation's default routes: alert_route (fluid_build.alert_defaults, 0.38.0+)
+│
+├── Adding a step of an Iceberg table's maintenance (an erasure, a purge)
+│     → MaintenanceAction      (entry-point: fluid_build.maintenance_actions, forge-cli 0.38.0+)
+│
+├── Adding a `fluid <name>` subcommand
+│     → CommandPlugin          (entry-point: fluid_build.commands, forge-cli 0.8.3+)
 │
 └── None of the above
       → BasePlugin (raw)       (entry-point: pick or propose a new group)
@@ -189,11 +199,75 @@ Conformance: use `CatalogAdapterTestHarness`.
 
 ---
 
+## AlertNotifier
+
+**Subclass to add a route kind for the alerts of the DAGs `fluid generate schedule` writes.** Needs forge-cli 0.38.0 or later (group `fluid_build.alert_notifiers`).
+
+No `plan` / `apply`: set `notifier` (the Airflow notifier the DAG imports, `"<module>:<class>"`) and implement `kwargs(route, alert)`, which returns the notifier's keyword arguments as literals.
+
+```python
+from fluid_sdk import AlertNotifier
+
+class ChatNotifier(AlertNotifier):
+    notifier = "acme_alerts.notifiers:ChatNotifier"
+
+    def kwargs(self, route, alert):
+        return {"message": alert.title, "chat_conn_id": route.connection}
+```
+
+An organisation's default routes are a second group, `fluid_build.alert_defaults`: an entry point that loads to a list of routes (or a function that returns one), built with `alert_route(...)`, which refuses a shape forge-cli would refuse.
+
+Conformance: use `AlertNotifierTestHarness`. Details, attributes and rules: [plugin-groups.md](plugin-groups.md#alertnotifier).
+
+---
+
+## MaintenanceAction
+
+**Subclass to add a step of an Iceberg table's maintenance.** Needs forge-cli 0.38.0 or later (group `fluid_build.maintenance_actions`).
+
+Implement `statements(table, options)`, which returns SQL (each statement one `DELETE`, `UPDATE` or `MERGE` on the action's own table), and `check(options)`, which returns the problems with the options. forge-cli compiles the statements into the plan and runs them before compaction.
+
+```python
+from fluid_sdk import MaintenanceAction, sql_literal
+
+class ErasePurpose(MaintenanceAction):
+    def statements(self, table, options):
+        return [f"DELETE FROM {table} WHERE purpose = {sql_literal(options['purpose'])}"]
+```
+
+Conformance: use `MaintenanceActionTestHarness`. Details and rules: [plugin-groups.md](plugin-groups.md#maintenanceaction).
+
+---
+
+## CommandPlugin
+
+**Subclass to add a `fluid <name>` subcommand.** Group `fluid_build.commands`, read by forge-cli 0.8.3 and later.
+
+Set `name` and `help`, override `configure(parser)` and `run(args, logger)`, and register an *instance*: forge-cli calls the loaded object with the CLI's subparsers.
+
+```python
+from fluid_sdk import CommandPlugin
+
+class HelloCommand(CommandPlugin):
+    name = "acme-hello"
+    help = "Print a greeting"
+
+    def run(self, args, logger):
+        print("hello")
+        return 0
+
+command = HelloCommand()
+```
+
+Conformance: use `CommandPluginTestHarness`. Details: [plugin-groups.md](plugin-groups.md#commandplugin).
+
+---
+
 ## When to subclass `BasePlugin` directly
 
 Rare. Pick this only if:
 
-- Your plugin's lifecycle doesn't fit any of the four roles.
+- Your plugin's lifecycle doesn't fit any of the seven roles.
 - You're prototyping a fifth role that doesn't exist yet.
 - You want to mix two roles in one plugin (e.g. a custom-scaffold + validator hybrid).
 

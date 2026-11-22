@@ -39,6 +39,9 @@ _KNOWN_GROUPS = {
     "fluid_build.apply_hooks",
     "fluid_build.modeling_techniques",
     "fluid_build.source_adapters",
+    "fluid_build.alert_notifiers",
+    "fluid_build.alert_defaults",
+    "fluid_build.maintenance_actions",
 }
 
 # `from fluid_sdk[.sub] import ( ... )`  OR  `from fluid_sdk[.sub] import a, b`

@@ -12,6 +12,8 @@ PluginTestHarness  (universal — covers any BasePlugin)
 └── CatalogAdapterTestHarness  (adds: role == catalog, base is CatalogAdapter)
 ```
 
+The roles for forge-cli's newer groups have no `plan` / `apply`, so their harnesses stand alone (they do not extend `PluginTestHarness`): `AlertNotifierTestHarness`, `MaintenanceActionTestHarness` and `CommandPluginTestHarness`. They are described [below](#alertnotifiertestharness).
+
 ## Setup
 
 ```python
@@ -79,6 +81,36 @@ All of `PluginTestHarness`, plus:
 
 - Subclass declares `role = "catalog"`.
 - Subclass is a `CatalogAdapter` subclass.
+
+### `AlertNotifierTestHarness`
+
+Set `notifier_class` (a class built with no arguments, or an instance), `sample_routes` (routes of this kind) and, if you like, `entry_point_name`. It verifies:
+
+- The kind is one forge-cli accepts: a `notifier` path of dotted identifiers (`module.path:Class`), a callable `kwargs`, plain pip `requirements` / `async_requirements`, a plain `default_connection`, and `events` drawn from `failure`, `retry`, `success`, `sla_miss`.
+- The entry-point name is a kind name and not a built-in kind's name (`email`, `slack`, `webhook`, `pagerduty`).
+- Each sample route has the shape forge-cli reads, asks only for events the kind sends, and names a connection when the kind requires one.
+- `check` returns sentences and does not raise.
+- For every event of every sample route, `kwargs` is deterministic, returns Python-identifier keys (not `context`) with literal values, and does not modify the route.
+
+### `MaintenanceActionTestHarness`
+
+Set `action_class`, `sample_options` (at least one that `check` accepts), `bad_options` (each must be refused) and, if the table is not `fluid.silver.orders`, `table`. It verifies:
+
+- `statements` exists and is callable; the entry-point name is plain.
+- `check` returns sentences, refuses every bad option, and never quotes an option value in its message.
+- `statements` is deterministic, returns a non-empty list (not a bare string), and does not modify the options.
+- Every statement passes `statement_problem`: no `${...}`, comment marker, backslash or control character; one `DELETE`, `UPDATE` or `MERGE` that writes the table. With `sqlglot` installed the statement is parsed as Spark SQL as forge-cli does; without it a text check stands in.
+
+### `CommandPluginTestHarness`
+
+Set `command_entry_point` (the function or instance the entry point names; not the class), optionally `expected_commands` and `reserved_command_names`. It verifies:
+
+- The entry point is callable and is not a class.
+- Registering with a fresh `subparsers` adds at least one command, prints nothing, and leaves the working directory and environment alone.
+- Command names are plain and not reserved.
+- Every parser has a callable `func` default taking `(args)` or `(args, logger)`.
+- `<command> --help` exits cleanly.
+- Importing the module prints nothing and changes no environment or working directory.
 
 ## Sample contracts
 

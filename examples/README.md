@@ -1,12 +1,15 @@
 # Examples — runnable FLUID plugins
 
-Three complete, working plugin packages. Each is a real PyPI-publishable package, fully tested. Copy any directory to start a new plugin from.
+Six complete, working plugin packages. Each is a real PyPI-publishable package, fully tested. Copy any directory to start a new plugin from.
 
 | Example | Role | What it does | LOC |
 |---|---|---|---|
 | [`hello-scaffold/`](hello-scaffold/) | `CustomScaffold` | Smallest possible plugin — emits one `README.md` from any contract | ~30 |
 | [`gitlab-ci-scaffold/`](gitlab-ci-scaffold/) | `CustomScaffold` | Realistic CI generator — emits `.gitlab-ci.yml`, `README.md`, per-env config | ~150 |
 | [`steward-validator/`](steward-validator/) | `Validator` | Custom governance rule — requires every contract to declare a steward | ~80 |
+| [`acme-chat-alerts/`](acme-chat-alerts/) | `AlertNotifier` | A route kind for generated DAGs' alerts, plus an organisation's default route (forge-cli 0.38.0+) | ~90 |
+| [`acme-erasure-action/`](acme-erasure-action/) | `MaintenanceAction` | A `DELETE` for the rows a request table names, run before compaction (forge-cli 0.38.0+) | ~45 |
+| [`acme-hello-command/`](acme-hello-command/) | `CommandPlugin` | A `fluid` subcommand (forge-cli 0.8.3+) | ~35 |
 
 ## Running an example
 

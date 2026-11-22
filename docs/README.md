@@ -22,19 +22,23 @@
 | Doc | What's inside |
 |---|---|
 | [`reference/architecture.md`](reference/architecture.md) | The four-layer model. Why role taxonomy. Entry-point discovery. Determinism contract. |
-| [`reference/role-taxonomy.md`](reference/role-taxonomy.md) | The four roles in detail. When to pick which. |
+| [`reference/role-taxonomy.md`](reference/role-taxonomy.md) | The seven roles in detail. When to pick which. |
+| [`reference/plugin-groups.md`](reference/plugin-groups.md) | Alert notifiers, maintenance actions and command plugins: what forge-cli reads and which forge-cli version first loads each group. |
 | [`reference/contract-parsing.md`](reference/contract-parsing.md) | `ContractHelper` — version-agnostic contract reader. |
 | [`reference/conformance-testing.md`](reference/conformance-testing.md) | Test-harness usage. What each harness verifies. Customising. |
 
 ## Working examples
 
-Three complete, runnable plugin packages — copy any of them to start a new plugin.
+Six complete, runnable plugin packages — copy any of them to start a new plugin.
 
 | Example | Role | Lines | What it shows |
 |---|---|---|---|
 | [`examples/hello-scaffold/`](../examples/hello-scaffold/) | `CustomScaffold` | ~30 | The smallest possible plugin |
 | [`examples/gitlab-ci-scaffold/`](../examples/gitlab-ci-scaffold/) | `CustomScaffold` | ~150 | Real-world CI generator |
 | [`examples/steward-validator/`](../examples/steward-validator/) | `Validator` | ~80 | Custom governance rule |
+| [`examples/acme-chat-alerts/`](../examples/acme-chat-alerts/) | `AlertNotifier` | ~90 | A route kind and an organisation's default route |
+| [`examples/acme-erasure-action/`](../examples/acme-erasure-action/) | `MaintenanceAction` | ~45 | A `DELETE` compiled into a table's maintenance |
+| [`examples/acme-hello-command/`](../examples/acme-hello-command/) | `CommandPlugin` | ~35 | A `fluid` subcommand |
 
 Each example has `pyproject.toml`, source code, conformance tests, and a `demo.py` that produces real output you can inspect.
 
