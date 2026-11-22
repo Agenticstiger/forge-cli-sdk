@@ -1,7 +1,7 @@
 """The secret rules the SDK vendors from forge-cli, pinned to forge-cli's own outcomes.
 
-The expected values below were produced by running forge-cli (commit 83569c0d, the branch of
-forge-cli PR 1063): ``secret_option_key`` and ``_redacted`` of ``fluid_build.alerts.routes``, and
+The expected values below were produced by running forge-cli as of forge-cli PR #1063
+(released in forge-cli 0.38.0): ``secret_option_key`` and ``_redacted`` of ``fluid_build.alerts.routes``, and
 ``canonical_statement`` of ``fluid_build.maintenance.statements``. forge-cli is the authority:
 a value the SDK passes may still be refused there. Tokens are assembled at run time so no
 token-shaped literal sits in the repository.

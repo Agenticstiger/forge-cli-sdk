@@ -401,3 +401,33 @@ def test_sample_alert_follows_forge_wording() -> None:
     assert sla.title.endswith("missed its SLA of 4h") and "task_list" in sla.text
     assert sample_alert("failure").sla_seconds == 3600
     assert "ti.log_url" in sample_alert("retry").text
+
+
+def test_an_instance_attribute_set_in_setup_method_is_seen() -> None:
+    class H(AlertNotifierTestHarness):
+        sample_routes = [ROUTE]
+
+        def setup_method(self) -> None:
+            self.notifier_class = _Good
+
+    h = H()
+    h.setup_method()
+    assert isinstance(h.get_notifier(), _Good)
+
+    class M(MaintenanceActionTestHarness):
+        sample_options = [{"a": 1}]
+
+        def setup_method(self) -> None:
+            self.action_class = _Action
+
+    m = M()
+    m.setup_method()
+    assert isinstance(m.get_action(), _Action)
+
+
+def test_an_entry_point_in_main_skips_the_import_test() -> None:
+    def in_main(sp: Any) -> None:
+        sp.add_parser("m").set_defaults(func=lambda args: 0)
+
+    in_main.__module__ = "__main__"
+    _skipped(_command(in_main), "test_importing_the_module_has_no_side_effects")

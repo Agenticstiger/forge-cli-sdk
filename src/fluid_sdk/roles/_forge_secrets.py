@@ -1,9 +1,9 @@
 """Secret rules vendored from forge-cli, so the SDK can test for much of what forge-cli refuses.
 
 Source: ``fluid_build/observability/secret_redactor.py`` and
-``fluid_build/alerts/routes.py::secret_option_key`` of forge-cli at commit 83569c0d (the branch
-of forge-cli PR 1063, which lands in forge-cli 0.38.0), with the regular expressions kept as
-they are there. ``_SENSITIVE_KEY_NAMES`` exists from that commit on.
+``fluid_build/alerts/routes.py::secret_option_key`` of forge-cli as of forge-cli PR #1063
+(released in forge-cli 0.38.0), with the regular expressions kept as they are there.
+``_SENSITIVE_KEY_NAMES`` exists from that PR on.
 
 forge-cli is the authority. Its redactor carries more rules (a registry of known secret
 values, JOSE-header detection for a glued JWT, and the like) that a zero-dependency SDK cannot

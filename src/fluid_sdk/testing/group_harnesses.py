@@ -46,8 +46,11 @@ _RESERVED_KWARGS = frozenset({"context"})
 
 
 def _configured(owner: Any, name: str) -> Any:
-    """A class attribute as set, not as Python would bind it: a plain function put on the
-    class is the function, not a method of the harness."""
+    """An attribute as set, not as Python would bind it: a plain function put on the class is
+    the function, not a method of the harness. An instance attribute (set in ``setup_method``)
+    wins over the class's."""
+    if name in vars(owner):
+        return vars(owner)[name]
     raw = inspect.getattr_static(type(owner), name)
     return raw.__func__ if isinstance(raw, staticmethod) else raw
 
@@ -507,6 +510,8 @@ class CommandPluginTestHarness:
         """
         target = self._entry_point()
         module_name = getattr(target, "__module__", None) or type(target).__module__
+        if module_name == "__main__":
+            _skip("the entry point is defined in __main__, which cannot be imported again")
         saved = {k: v for k, v in sys.modules.items() if k == module_name}
         sys.modules.pop(module_name, None)
         try:
