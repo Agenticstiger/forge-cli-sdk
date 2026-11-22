@@ -288,7 +288,7 @@ def key_shaped(value: str) -> bool:
         return True
     if len(value) < _MIN_TOKEN or not value.isascii() or not value.isalnum():
         return False
-    pairs = list(zip(value, value[1:]))
+    pairs = list(zip(value, value[1:], strict=False))
     digit_switches = sum(1 for a, b in pairs if a.isdigit() != b.isdigit())
     case_switches = sum(
         1 for a, b in pairs if a.isalpha() and b.isalpha() and a.isupper() != b.isupper()

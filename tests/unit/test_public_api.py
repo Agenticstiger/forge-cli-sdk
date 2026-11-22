@@ -16,6 +16,16 @@ PROMISED_EXPORTS = {
     "Validator",
     "InfraProvider",
     "CatalogAdapter",
+    # Plain roles for the forge-cli 0.38.0 groups
+    "AlertNotifier",
+    "AlertRoute",
+    "Alert",
+    "NotifierCall",
+    "alert_route",
+    "check_alert_route",
+    "MaintenanceAction",
+    "sql_literal",
+    "CommandPlugin",
     # Action + result
     "PluginAction",
     "ExecutionResult",
