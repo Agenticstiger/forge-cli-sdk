@@ -45,6 +45,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
 
+from ._forge_secrets import looks_like_secret, secret_option_key
+
 #: Entry-point group of route kinds (read by name, loaded when a route names the kind).
 NOTIFIER_GROUP = "fluid_build.alert_notifiers"
 
@@ -105,7 +107,6 @@ _MIN_TOKEN = 24
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _EMAIL = re.compile(r"[A-Za-z0-9._+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63})+\Z")
 _OPTION_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
-_SECRET_KEY_PARTS = ("password", "passwd", "secret", "token", "apikey", "routingkey", "credential")
 _MAX_TEXT = 1000
 _MAX_ITEMS = 50
 _MAX_DEPTH = 4
@@ -183,6 +184,24 @@ class NotifierCall:
     supports_async: bool = False
 
 
+_TASK_TEXT = "Run {{ ti.run_id }}, try {{ ti.try_number }}. Log: {{ ti.log_url }}"
+_SLA_TEXT = (
+    "{% if task_list is defined %}Not done in time: {{ task_list }}"
+    "{% else %}Run {{ dag_run.dag_run_id }} was not done by {{ deadline.deadline_time }}"
+    "{% endif %}"
+)
+
+
+def _duration_words(seconds: int) -> str:
+    parts = []
+    remaining = int(seconds)
+    for size, unit in ((86400, "d"), (3600, "h"), (60, "m"), (1, "s")):
+        count, remaining = divmod(remaining, size)
+        if count:
+            parts.append(f"{count}{unit}")
+    return "".join(parts) or "0s"
+
+
 def sample_alert(
     event: str,
     *,
@@ -191,30 +210,34 @@ def sample_alert(
     product_id: str = "fluid.validate",
     sla_seconds: Optional[int] = 3600,
 ) -> Alert:
-    """An :class:`Alert` shaped like the ones forge-cli builds, for tests.
+    """An :class:`Alert` worded as forge-cli's ``make_alert`` words it, for tests.
 
-    forge-cli checks a kind by calling :meth:`AlertNotifier.kwargs` with
-    ``dag_id="fluid.validate"`` at ``fluid validate``; the same ids are the default here.
+    The titles, texts, dedup key and ``sla_seconds`` follow forge-cli (``sla_seconds`` is set
+    for every event when an SLA is planned, as it is there). forge-cli checks a kind by calling
+    :meth:`AlertNotifier.kwargs` with ``dag_id="fluid.validate"`` at ``fluid validate``; the
+    same ids are the default here. forge-cli's wording is the authority and may change.
     """
-    if event not in EVENTS:
-        raise ValueError(f"unknown alert event {event!r}; expected one of {', '.join(EVENTS)}")
     if event == "failure":
-        title = f"fluid: {dag_id}: task {{{{ ti.task_id }}}} failed"
+        title, text = f"fluid: {dag_id}: task {{{{ ti.task_id }}}} failed", _TASK_TEXT
     elif event == "retry":
         title = f"fluid: {dag_id}: task {{{{ ti.task_id }}}} failed and will retry"
+        text = _TASK_TEXT
     elif event == "success":
-        title = f"fluid: {dag_id} succeeded"
+        title, text = f"fluid: {dag_id} succeeded", "Run {{ run_id }}."
+    elif event == "sla_miss":
+        title = f"fluid: {dag_id} missed its SLA of {_duration_words(int(sla_seconds or 0))}"
+        text = _SLA_TEXT
     else:
-        title = f"fluid: {dag_id} missed its SLA"
+        raise ValueError(f"unknown alert event {event!r}; expected one of {', '.join(EVENTS)}")
     return Alert(
         event=event,
         dag_id=dag_id,
         product_id=product_id,
         severity=severity,
         title=title,
-        text="Run {{ run_id }}.",
+        text=text,
         dedup_key=f"fluid/{dag_id}",
-        sla_seconds=int(sla_seconds) if event == "sla_miss" and sla_seconds else None,
+        sla_seconds=int(sla_seconds) if sla_seconds else None,
     )
 
 
@@ -303,7 +326,7 @@ def connection_problem(value: Any) -> str:
             "is not an Airflow connection id (letters, digits, '_', '.' and '-'); a URL, an "
             "address or a key belongs IN that connection, which the route names"
         )
-    if key_shaped(value):
+    if key_shaped(value) or looks_like_secret(value):
         return "looks like a key, not a connection id; put the key in an Airflow connection"
     return ""
 
@@ -373,12 +396,9 @@ def _text_problem(value: str) -> str:
         return "holds a control character"
     if "://" in value:
         return "holds a URL; a URL belongs in the Airflow connection the route names"
+    if looks_like_secret(value):
+        return "holds what looks like a secret; secrets belong in the Airflow connection"
     return ""
-
-
-def _secret_key(key: str) -> bool:
-    folded = re.sub(r"[^a-z0-9]", "", key.lower())
-    return any(part in folded for part in _SECRET_KEY_PARTS)
 
 
 def _option_problems(value: Any, where: str, depth: int = 0) -> List[str]:
@@ -405,7 +425,7 @@ def _option_problems(value: Any, where: str, depth: int = 0) -> List[str]:
         for key, item in value.items():
             if not isinstance(key, str) or not _OPTION_KEY.match(key):
                 out.append(f"{where} has a key that is not a plain name (value not shown)")
-            elif _secret_key(key):
+            elif secret_option_key(key):
                 out.append(
                     f"{where}.{key} is named like a secret; a kind's secret belongs in the "
                     "Airflow connection the route names (value not shown)"
@@ -423,8 +443,10 @@ def check_alert_route(raw: Any, where: str = "route") -> List[str]:
     an ``fluid_build.alert_defaults`` entry: the keys, ``name``, ``kind``, ``events``,
     ``connection``, ``to`` / ``from`` (built-in ``email`` only), ``severity`` and ``options``
     (JSON values with no template syntax, no URL and no secret-named key). A message never
-    quotes a value. forge-cli is the authority: it also asks the route's kind, which this
-    cannot do without loading the kind, so a route that passes here can still be refused.
+    quotes a value. Strings are also refused when they look like a secret, by the redactor's
+    patterns forge-cli uses (vendored in part). forge-cli is the authority and may refuse more:
+    it also asks the route's kind, which this cannot do without loading the kind, and its
+    redactor has rules this SDK cannot carry.
     """
     if not isinstance(raw, Mapping):
         return [f"{where} is not a mapping"]
@@ -436,13 +458,18 @@ def check_alert_route(raw: Any, where: str = "route") -> List[str]:
             f"{', '.join(sorted(_ROUTE_KEYS))})"
         )
     name = raw.get("name")
-    if not isinstance(name, str) or not ROUTE_NAME.match(name) or key_shaped(name):
+    if (
+        not isinstance(name, str)
+        or not ROUTE_NAME.match(name)
+        or key_shaped(name)
+        or looks_like_secret(name)
+    ):
         errors.append(
             f"{where}.name must be a plain name (a letter or '_', then letters, digits, '_' "
             "and '-', at most 64) (value not shown)"
         )
     kind = raw.get("kind")
-    if not isinstance(kind, str) or not KIND_NAME.match(kind):
+    if not isinstance(kind, str) or not KIND_NAME.match(kind) or looks_like_secret(kind):
         errors.append(
             f"{where}.kind must name a kind: {', '.join(BUILTIN_KINDS)}, or a plugin's "
             "(lower case letters, digits, '_' and '-') (value not shown)"
