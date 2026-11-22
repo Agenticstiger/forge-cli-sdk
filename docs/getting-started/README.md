@@ -210,7 +210,7 @@ You just shipped a working FLUID plugin.
 | If you want to... | Go to |
 |---|---|
 | Build something realistic — a full CI generator | [walkthrough/your-first-real-plugin.md](../walkthrough/your-first-real-plugin.md) |
-| Understand the four plugin roles + pick the right one | [reference/role-taxonomy.md](../reference/role-taxonomy.md) |
+| Understand the plugin roles + pick the right one | [reference/role-taxonomy.md](../reference/role-taxonomy.md) |
 | See the underlying ABCs + lifecycle in detail | [reference/architecture.md](../reference/architecture.md) |
 | Hook your plugin into the FLUID CLI end-to-end | [walkthrough/plug-into-fluid-cli.md](../walkthrough/plug-into-fluid-cli.md) |
 | Browse complete working examples | [`examples/`](../../examples/) |

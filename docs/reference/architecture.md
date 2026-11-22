@@ -55,9 +55,9 @@ This document explains the design — why it looks the way it does and how the p
 
 Each layer below is fully usable on its own. `ContractHelper` works without ever instantiating a plugin; `PluginAction` works without ever calling `plan()`.
 
-## Why four roles, not one?
+## Why several roles, not one?
 
-A single `BasePlugin` ABC could in principle do everything — but each of the four roles has subtly different semantics, defaults, and conformance expectations:
+A single `BasePlugin` ABC could in principle do everything — but each of the four `BasePlugin` roles has subtly different semantics, defaults, and conformance expectations:
 
 |  | InfraProvider | CustomScaffold | Validator | CatalogAdapter |
 |---|---|---|---|---|
@@ -79,7 +79,7 @@ Authors can still inherit `BasePlugin` directly for novel use cases — the role
 
 ## Entry-point discovery
 
-The FLUID CLI walks four separate entry-point groups:
+The FLUID CLI walks one entry-point group per role. The four `BasePlugin` roles:
 
 ```toml
 [project.entry-points."fluid_build.providers"]
@@ -93,6 +93,19 @@ my-rule = "my_pkg:MyValidator"
 
 [project.entry-points."fluid_build.catalog_adapters"]
 my-catalog = "my_pkg:MyCatalogAdapter"
+```
+
+Three more groups serve plain classes with no `plan` / `apply` (see [plugin-groups.md](plugin-groups.md)); forge-cli reads a few attributes, or calls one method, on whatever the entry point loads:
+
+```toml
+[project.entry-points."fluid_build.alert_notifiers"]       # forge-cli 0.38.0+
+acme-chat = "my_pkg.alerts:ChatNotifier"
+
+[project.entry-points."fluid_build.maintenance_actions"]   # forge-cli 0.38.0+
+acme-erase = "my_pkg.maintenance:EraseRequested"
+
+[project.entry-points."fluid_build.commands"]              # forge-cli 0.8.3+
+acme = "my_pkg.cli:command"
 ```
 
 Forge-cli loads each group at the appropriate lifecycle stage (providers at apply, scaffolds at generate, validators at validate, catalog adapters at publish). The plugin's `role` class attribute is the canonical signal — entry-point groups are convenience for the loader.
