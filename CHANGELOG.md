@@ -7,6 +7,62 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-11-22
+
+### Added
+
+- **`AlertNotifier`: a route kind for the alerts of generated DAGs.** forge-cli 0.38.0 reads
+  the `fluid_build.alert_notifiers` entry-point group. The class carries forge-cli's own
+  attributes and defaults (`notifier`, `requirements`, `supports_async`, `async_requirements`,
+  `events`, `requires_connection`, `default_connection`) and its two methods,
+  `check(route)` and `kwargs(route, alert)`. The values forge-cli hands a kind (`AlertRoute`,
+  `Alert`, `NotifierCall`) are exported too. Like the other plain roles below it has no
+  `plan` / `apply` and does not subclass `BasePlugin`: forge-cli reads the same names from any
+  object.
+- **`alert_route` and `check_alert_route`: default routes for `fluid_build.alert_defaults`.**
+  `alert_route` builds one route as a contract writes it and raises `ValueError` for a shape
+  forge-cli would refuse, never quoting a value. `check_alert_route` returns the problems as a
+  list. The checks cover the keys, `name`, `kind`, `events`, `connection`, `severity`, the
+  email-only keys and `options` (JSON values with no template syntax, URL or secret-named key).
+  forge-cli also asks the route's kind, which a helper cannot, so it stays the authority.
+  forge-cli 0.38.0 first loads this group.
+- **`MaintenanceAction`: a step of an Iceberg table's maintenance.** forge-cli 0.38.0 reads
+  the `fluid_build.maintenance_actions` entry-point group. `check(options)` returns the problems
+  with the options; `statements(table, options)` returns the SQL, each statement one `DELETE`,
+  `UPDATE` or `MERGE` on the action's own table. `sql_literal` writes a string as a literal
+  that passes, and `fluid_sdk.roles.maintenance_action.statement_problem` applies forge-cli's
+  statement rules (no `${...}`, comment, backslash or control character; one write to the
+  table), parsing as Spark SQL when `sqlglot` is installed and falling back to a text check when
+  it is not. The SDK still has no dependencies.
+- **`CommandPlugin`: a `fluid <name>` subcommand.** The `fluid_build.commands` group is read by
+  forge-cli 0.8.3 and later. Set `name` and `help`, override `configure(parser)` and
+  `run(args, logger)`, and name an instance in the entry point: forge-cli calls the loaded
+  object with the CLI's subparsers.
+- **Conformance harnesses** in `fluid_sdk.testing`, one per new role, each encoding the rules
+  forge-cli applies when it loads the entry point:
+  - `AlertNotifierTestHarness`: the `notifier` path, plain requirements and default connection,
+    known events, an entry-point name that is a kind name and not a built-in one, sample routes
+    with the shape forge-cli reads, and `kwargs` that are deterministic, literal, identifier-keyed
+    (not `context`) and leave the route alone for every event.
+  - `MaintenanceActionTestHarness`: `check` refuses bad options without quoting a value;
+    `statements` is deterministic, a non-empty list, leaves the options alone, and every
+    statement passes `statement_problem`.
+  - `CommandPluginTestHarness`: the entry point is a callable and not a class; registering adds a
+    command, prints nothing and leaves the working directory and environment alone; every parser
+    has a runnable `func`; `--help` exits cleanly; importing the module is quiet.
+- **Three example packages**: `examples/acme-chat-alerts` (a kind and a default route),
+  `examples/acme-erasure-action` and `examples/acme-hello-command`, each with its entry point and
+  a test that runs the harness.
+- `docs/reference/plugin-groups.md`, and updates to the role taxonomy, architecture and
+  conformance-testing references, say what each group reads and which forge-cli version first
+  loads it.
+
+### Notes
+
+- `SDK_PROTOCOL_VERSION` stays 1 (the `BasePlugin` interface is unchanged) and
+  `MIN_CLI_VERSION` stays 0.7.0. The alert and maintenance groups need forge-cli 0.38.0; a
+  plugin for them simply registers nothing on an older CLI.
+
 ## [0.11.0] — 2026-11-21
 
 ### Fixed
@@ -197,5 +253,6 @@ Import path remains `fluid_sdk` (dual naming — see README).
 Anything before `0.9.0` shipped under the `fluid-sdk` / `fluid_provider_sdk`
 names and was never published to PyPI. See git history for context.
 
-[Unreleased]: https://github.com/Agenticstiger/forge-cli-sdk/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/Agenticstiger/forge-cli-sdk/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/Agenticstiger/forge-cli-sdk/releases/tag/v0.12.0
 [0.9.0]: https://github.com/Agenticstiger/forge-cli-sdk/releases/tag/v0.9.0
