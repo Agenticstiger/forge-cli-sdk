@@ -3,7 +3,7 @@ fluid-sdk — Zero-dependency SDK for building FLUID plugins.
 
 Build a plugin once against this SDK, register it via Python entry-points,
 and the FLUID CLI (``data-product-forge``) discovers and dispatches to it.
-Four role ABCs ship — one mental model, one ``role`` tag each:
+Seven roles ship — one ``role`` tag each. Four are ABCs over :class:`BasePlugin`:
 
 * :class:`CustomScaffold` — file-emitting plugins (CI configs, app code,
   IaC stacks). Ships a reference :meth:`apply` that writes files atomically
@@ -15,7 +15,15 @@ Four role ABCs ship — one mental model, one ``role`` tag each:
 * :class:`CatalogAdapter` — metadata-catalog sync. ``apply`` is abstract
   (catalog-specific); use :func:`catalog_entry_action` to build actions.
 
-Each role declares typed :meth:`~fluid_sdk.base.BasePlugin.capabilities` and a
+Three more describe the plugin groups forge-cli 0.38.0 adds. They have no ``plan`` /
+``apply``: forge-cli reads forge-cli's own attributes and methods from any object.
+
+* :class:`AlertNotifier` — an alert route kind for generated DAGs; :func:`alert_route`
+  builds a default route for an organisation's pack.
+* :class:`MaintenanceAction` — a step of an Iceberg table's maintenance that returns SQL.
+* :class:`CommandPlugin` — an extra ``fluid <name>`` subcommand.
+
+Each BasePlugin role declares typed :meth:`~fluid_sdk.base.BasePlugin.capabilities` and a
 plugin↔CLI compatibility window the CLI gates at load (see :mod:`fluid_sdk.version`).
 
 Entry-point groups the FLUID CLI walks (one per role):
@@ -24,6 +32,10 @@ Entry-point groups the FLUID CLI walks (one per role):
 * ``fluid_build.validators`` — register :class:`Validator` plugins
 * ``fluid_build.providers`` — register cloud-infra providers
 * ``fluid_build.catalog_adapters`` — register catalog adapters
+* ``fluid_build.alert_notifiers`` — register :class:`AlertNotifier` kinds (forge-cli 0.38.0+)
+* ``fluid_build.alert_defaults`` — register an organisation's default alert routes (0.38.0+)
+* ``fluid_build.maintenance_actions`` — register :class:`MaintenanceAction` kinds (0.38.0+)
+* ``fluid_build.commands`` — register :class:`CommandPlugin` subcommands (0.8.3+)
 * ``fluid_build.extension_schemas`` — register a JSON-Schema provider for a
   ``contract.extensions.<key>`` block so the CLI copilot can natively generate
   and validate it (see :func:`iter_extension_schemas`)
@@ -41,6 +53,10 @@ Public API::
         Validator,
         InfraProvider,
         CatalogAdapter,
+        # Plain roles for the forge-cli 0.38.0 groups
+        AlertNotifier,
+        MaintenanceAction,
+        CommandPlugin,
         # Data types
         PluginAction,
         ExecutionResult,
@@ -122,16 +138,25 @@ from .error import PluginError, PluginInternalError
 from .metadata import PluginMetadata
 from .result import ExecutionResult
 
-# Role helpers — four roles, one mental model
+# Role helpers — seven roles
 from .roles import (
+    Alert,
+    AlertNotifier,
+    AlertRoute,
     CatalogAdapter,
+    CommandPlugin,
     CustomScaffold,
     Finding,
     InfraProvider,
+    MaintenanceAction,
+    NotifierCall,
     ScaffoldFile,
     Validator,
+    alert_route,
     catalog_entry_action,
+    check_alert_route,
     provision_action,
+    sql_literal,
     write_file_action,
 )
 
@@ -147,12 +172,22 @@ from .version import (
 __version__ = SDK_VERSION
 
 __all__ = [
-    # ── ABCs (four roles, one mental model) ──────────────────────
+    # ── ABCs (four BasePlugin roles) ─────────────────────────────
     "BasePlugin",
     "CustomScaffold",
     "Validator",
     "InfraProvider",
     "CatalogAdapter",
+    # ── Plain roles (no plan/apply): the forge-cli 0.38.0 groups ──
+    "AlertNotifier",
+    "AlertRoute",
+    "Alert",
+    "NotifierCall",
+    "alert_route",
+    "check_alert_route",
+    "MaintenanceAction",
+    "sql_literal",
+    "CommandPlugin",
     # ── Action + result ──────────────────────────────────────────
     "PluginAction",
     "ExecutionResult",
