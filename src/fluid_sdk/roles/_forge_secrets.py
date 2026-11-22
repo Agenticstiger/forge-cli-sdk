@@ -1,4 +1,4 @@
-"""Secret rules vendored from forge-cli, so the SDK can refuse what forge-cli refuses.
+"""Secret rules vendored from forge-cli, so the SDK can test for much of what forge-cli refuses.
 
 Source: ``fluid_build/observability/secret_redactor.py`` and
 ``fluid_build/alerts/routes.py::secret_option_key`` of forge-cli at commit 83569c0d (the branch

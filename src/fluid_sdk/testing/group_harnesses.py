@@ -6,8 +6,9 @@
 
 These roles have no ``plan`` / ``apply``, so the harnesses do not extend
 :class:`~fluid_sdk.testing.PluginTestHarness`. Each encodes the rules forge-cli applies when
-it loads an entry point of the group (forge-cli is the authority and refuses what these let
-through if its own checks are stricter). Subclass one, set the class attributes and pytest
+it loads an entry point of the group. forge-cli is the authority: a plugin that passes can still
+be refused there, since some of its rules (its redactor, the Spark SQL parse) cannot be carried
+by a zero-dependency SDK. Subclass one, set the class attributes and pytest
 discovers every ``test_*`` method.
 """
 
