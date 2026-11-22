@@ -210,11 +210,14 @@ def test_register_must_add_a_command_quietly_with_a_func() -> None:
     def reserved(sp: Any) -> None:
         sp.add_parser("plan").set_defaults(func=lambda args: 0)
 
-    _fails(_command(adds_nothing), "test_registering_adds_a_command_and_nothing_else")
-    _fails(_command(prints), "test_registering_adds_a_command_and_nothing_else")
+    _fails(
+        _command(adds_nothing),
+        "test_registering_adds_a_command_quietly_and_leaves_the_process_alone",
+    )
+    _fails(_command(prints), "test_registering_adds_a_command_quietly_and_leaves_the_process_alone")
     _fails(_command(no_func), "test_every_command_has_a_runnable_func")
     _fails(_command(bad_arity), "test_every_command_has_a_runnable_func")
-    _fails(_command(reserved, reserved=("plan",)), "test_command_names_are_plain_and_not_reserved")
+    _fails(_command(reserved, reserved=("plan",)), "test_command_names_are_not_reserved")
 
 
 def test_register_must_not_touch_the_environment() -> None:
@@ -225,10 +228,176 @@ def test_register_must_not_touch_the_environment() -> None:
         sp.add_parser("envy").set_defaults(func=lambda args: 0)
 
     try:
-        _fails(_command(sets_env), "test_registering_adds_a_command_and_nothing_else")
+        _fails(
+            _command(sets_env),
+            "test_registering_adds_a_command_quietly_and_leaves_the_process_alone",
+        )
     finally:
         os.environ.pop("ACME_PLUGIN_LOADED", None)
 
 
 def test_argparse_import_is_used() -> None:
     assert argparse.ArgumentParser
+
+
+# ── a plain object, a function factory, a missing check ──────────────────────
+
+
+class _PlainKind:
+    notifier = "acme.notifiers:Teams"
+
+    def kwargs(self, route: Any, alert: Any) -> Mapping[str, Any]:
+        return {"title": alert.title}
+
+
+def _skipped(harness: Any, test: str) -> None:
+    import unittest
+
+    with pytest.raises(unittest.SkipTest):
+        getattr(harness, test)()
+
+
+def test_a_plain_kind_skips_the_subclass_test_and_needs_no_check() -> None:
+    h = _notifier(_PlainKind)
+    _skipped(h, "test_subclasses_alert_notifier_when_it_can")
+    for name in dir(h):
+        if name.startswith("test_") and name != "test_subclasses_alert_notifier_when_it_can":
+            getattr(h, name)()
+
+
+def test_a_function_factory_builds_the_kind_as_forge_does() -> None:
+    def factory() -> Any:
+        return _PlainKind()
+
+    h = _notifier(factory)
+    assert isinstance(h.get_notifier(), _PlainKind)
+    h.test_is_an_alert_kind_forge_accepts()
+
+    class H(MaintenanceActionTestHarness):
+        action_class = lambda: _Action()  # noqa: E731 - a function, not a method
+        sample_options = [{"a": 1}]
+
+    assert isinstance(H().get_action(), _Action)
+    H().test_statements_are_a_list_of_accepted_writes()
+
+
+def test_a_plain_action_without_check_skips_and_passes() -> None:
+    class Plain:
+        def statements(self, table: str, options: Mapping[str, Any]) -> Sequence[str]:
+            return [f"DELETE FROM {table} WHERE a = 1"]
+
+    h = _maintenance(Plain)
+    _skipped(h, "test_subclasses_maintenance_action_when_it_can")
+    for name in dir(h):
+        if name.startswith("test_") and name != "test_subclasses_maintenance_action_when_it_can":
+            getattr(h, name)()
+
+
+def test_action_check_must_return_a_list() -> None:
+    class Str(_Action):
+        def check(self, options: Mapping[str, Any]) -> Any:
+            return "a problem"
+
+    _fails(_maintenance(Str), "test_check_returns_a_list_of_sentences_and_does_not_raise")
+
+
+def test_a_kind_whose_check_refuses_every_sample_route_fails() -> None:
+    class Refuses(_Good):
+        def check(self, route: AlertRoute) -> Sequence[str]:
+            return ["no"]
+
+    _fails(_notifier(Refuses), "test_sample_routes_pass_check")
+
+
+def test_assertions_name_a_position_not_a_route_value() -> None:
+    secret = "tok_do_not_echo"
+    odd = AlertRoute(name=secret, kind="teams", events=("failure",))
+    with pytest.raises(AssertionError) as exc:
+        _notifier(_Good, routes=[odd]).test_routes_are_served_events_and_name_a_connection()
+    assert "sample_routes[0]" in str(exc.value) and secret not in str(exc.value)
+
+
+def test_built_in_only_keys_are_exercised() -> None:
+    bad = AlertRoute(
+        name="r", kind="teams", connection="c", events=("failure",), to=("a@b.example",)
+    )
+    _fails(_notifier(_Good, routes=[bad]), "test_sample_routes_have_the_shape_forge_reads")
+    fmt = AlertRoute(name="r", kind="teams", connection="c", events=("failure",), format="zenduty")
+    _fails(_notifier(_Good, routes=[fmt]), "test_sample_routes_have_the_shape_forge_reads")
+
+
+def test_no_sqlglot_warns(monkeypatch: pytest.MonkeyPatch) -> None:
+    import builtins
+
+    real = builtins.__import__
+
+    def refuse(name: str, *a: Any, **k: Any) -> Any:
+        if name.split(".")[0] == "sqlglot":
+            raise ImportError(name)
+        return real(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", refuse)
+    with pytest.warns(UserWarning, match="sqlglot"):
+        _maintenance(_Action).test_statements_are_a_list_of_accepted_writes()
+
+
+def test_the_text_check_rejects_a_similar_table_name() -> None:
+    class Archive(_Action):
+        def statements(self, table: str, options: Mapping[str, Any]) -> Sequence[str]:
+            return [f"DELETE FROM {table}_archive WHERE a = 1"]
+
+    _fails(_maintenance(Archive), "test_statements_are_a_list_of_accepted_writes")
+
+
+# ── command plugin ───────────────────────────────────────────────────────────
+
+
+def test_command_names_have_no_pattern_beyond_not_reserved() -> None:
+    def odd_name(sp: Any) -> None:
+        sp.add_parser("Acme_Tool.v2").set_defaults(func=lambda args: 0)
+
+    _command(odd_name).test_command_names_are_not_reserved()
+
+
+def test_arity_matches_how_forge_calls_func() -> None:
+    def three_with_default(sp: Any) -> None:
+        def run(args: Any, logger: Any, extra: Any = None) -> int:
+            return 0
+
+        sp.add_parser("three").set_defaults(func=run)
+
+    def three_required(sp: Any) -> None:
+        def run(args: Any, logger: Any, extra: Any) -> int:
+            return 0
+
+        sp.add_parser("three").set_defaults(func=run)
+
+    def varargs(sp: Any) -> None:
+        sp.add_parser("va").set_defaults(func=lambda *a: 0)
+
+    _command(three_with_default).test_every_command_has_a_runnable_func()
+    _command(varargs).test_every_command_has_a_runnable_func()
+    _fails(_command(three_required), "test_every_command_has_a_runnable_func")
+
+
+def test_a_failing_register_still_restores_the_process() -> None:
+    import os
+
+    cwd = os.getcwd()
+
+    def breaks(sp: Any) -> None:
+        os.environ["ACME_LEAK"] = "1"
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        _command(breaks)._register()
+    assert "ACME_LEAK" not in os.environ and os.getcwd() == cwd
+
+
+def test_sample_alert_follows_forge_wording() -> None:
+    from fluid_sdk.roles.alert_notifier import sample_alert
+
+    sla = sample_alert("sla_miss", sla_seconds=14400)
+    assert sla.title.endswith("missed its SLA of 4h") and "task_list" in sla.text
+    assert sample_alert("failure").sla_seconds == 3600
+    assert "ti.log_url" in sample_alert("retry").text
