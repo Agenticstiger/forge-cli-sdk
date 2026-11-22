@@ -37,6 +37,7 @@ Register via entry-point (the name is the action's ``kind``)::
 
 from __future__ import annotations
 
+import re
 from typing import Any, List, Mapping, Sequence, Tuple
 
 #: Entry-point group of maintenance actions (read by name, loaded when an action names the kind).
@@ -116,8 +117,10 @@ def statement_problem(sql: Any, table: str) -> str:
     character, no comment marker and no backslash. When ``sqlglot`` is installed (forge-cli
     depends on it; this SDK does not) the statement is also parsed as Spark SQL and must be
     exactly one ``DELETE``, ``UPDATE`` or ``MERGE`` that writes ``table`` (given catalog
-    first, ``fluid.silver.orders``); without it, a text check stands in: one statement that
-    starts with one of those words and names the table. forge-cli remains the authority.
+    first, ``fluid.silver.orders``); without it a text check stands in: one statement whose
+    target, right after ``DELETE FROM``, ``UPDATE`` or ``MERGE INTO`` (after a leading ``WITH``
+    clause), is the table. **Without sqlglot a statement that does not parse, or one whose target
+    an unusual spelling hides, can pass.** forge-cli remains the authority and parses.
     """
     if not isinstance(sql, str) or not sql.strip():
         return "is not a SQL statement"
@@ -185,8 +188,47 @@ def _parsed_problem(sql: str, table: str) -> str:
     return ""
 
 
+_PART = r"(?:`[^`]{1,128}`|[A-Za-z_][A-Za-z0-9_]{0,127})"
+_TARGET = re.compile(
+    r"(?is)\A(?:DELETE\s+FROM|UPDATE|MERGE\s+INTO)\s+"
+    rf"({_PART}(?:\s*\.\s*{_PART}){{0,2}})(?![A-Za-z0-9_`.])"
+)
+_WORD = re.compile(r"[A-Za-z_]+")
+
+
+def _statement_start(body: str) -> str:
+    """``body`` from its write keyword: a leading ``WITH ... `` clause is skipped (top-level
+    parentheses and quotes are balanced), as it is for forge-cli's parse."""
+    if not re.match(r"(?is)\s*WITH\b", body):
+        return body.lstrip()
+    depth, quote, i = 0, "", 0
+    while i < len(body):
+        ch = body[i]
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"`":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0 and (i == 0 or not (body[i - 1].isalnum() or body[i - 1] == "_")):
+            word = _WORD.match(body, i)
+            if word and word.group(0).upper() in WRITES:
+                return body[i:]
+        i += 1
+    return ""
+
+
 def _text_problem(sql: str, table: str) -> str:
-    """The dependency-free stand-in for the parse: one write statement naming ``table``."""
+    """The dependency-free stand-in for the parse: one write statement whose target, right after
+    ``DELETE FROM``, ``UPDATE`` or ``MERGE INTO``, is ``table`` (backticks and spaces around the
+    dots are read as forge-cli reads them).
+
+    It is a text check: a statement a parser would reject, or one whose target an unusual
+    spelling hides, can pass it. Install ``sqlglot`` for the parse.
+    """
     body = sql.strip()
     quote = ""
     cut = -1
@@ -203,10 +245,14 @@ def _text_problem(sql: str, table: str) -> str:
         if body[cut + 1 :].strip():
             return "must be exactly one statement"
         body = body[:cut]
-    words = body.split(None, 1)
-    if not words or words[0].upper() not in WRITES:
+    start = _statement_start(body)
+    if not start or _WORD.match(start) is None or _WORD.match(start).group(0).upper() not in WRITES:
         return f"must be one of {', '.join(WRITES)}"
-    if table.lower() not in body.lower():
+    match = _TARGET.match(start)
+    if match is None:
+        return f"must write the action's own table, named {table}"
+    parts = re.findall(_PART, match.group(1))
+    if tuple(p.strip("`").lower() for p in parts) != tuple(table.lower().split(".")):
         return f"must write the action's own table, named {table}"
     return ""
 

@@ -21,35 +21,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   object.
 - **`alert_route` and `check_alert_route`: default routes for `fluid_build.alert_defaults`.**
   `alert_route` builds one route as a contract writes it and raises `ValueError` for a shape
-  forge-cli would refuse, never quoting a value. `check_alert_route` returns the problems as a
-  list. The checks cover the keys, `name`, `kind`, `events`, `connection`, `severity`, the
-  email-only keys and `options` (JSON values with no template syntax, URL or secret-named key).
-  forge-cli also asks the route's kind, which a helper cannot, so it stays the authority.
-  forge-cli 0.38.0 first loads this group.
+  the SDK's copy of forge-cli's route rules refuses, never quoting a value. `check_alert_route`
+  returns the problems as a list. The checks cover the keys, `name`, `kind`, `events`,
+  `connection`, `severity`, the email-only keys and `options` (JSON values with no template
+  syntax or URL). Option keys follow forge-cli's `secret_option_key` by whole words, and a string
+  with a shape forge-cli's redactor masks (provider key prefixes, `Bearer`, a JWT, a PEM block,
+  URL user info, `key=value` with a credential-named key, the incident and chat webhook URLs) is
+  refused in `name`, `kind`, `connection`, `format` and every option string. Those rules are
+  vendored from forge-cli, which is the authority: it has more rules than a zero-dependency SDK
+  can carry, it also asks the route's kind, and it may refuse more. forge-cli 0.38.0 first loads
+  this group.
 - **`MaintenanceAction`: a step of an Iceberg table's maintenance.** forge-cli 0.38.0 reads
   the `fluid_build.maintenance_actions` entry-point group. `check(options)` returns the problems
   with the options; `statements(table, options)` returns the SQL, each statement one `DELETE`,
   `UPDATE` or `MERGE` on the action's own table. `sql_literal` writes a string as a literal
   that passes, and `fluid_sdk.roles.maintenance_action.statement_problem` applies forge-cli's
   statement rules (no `${...}`, comment, backslash or control character; one write to the
-  table), parsing as Spark SQL when `sqlglot` is installed and falling back to a text check when
-  it is not. The SDK still has no dependencies.
+  table), parsing as Spark SQL when `sqlglot` is installed. Without it the target is read by
+  text right after `DELETE FROM`, `UPDATE` or `MERGE INTO`, and a statement that does not parse,
+  or whose target an unusual spelling hides, can pass; the harness warns. The SDK still has no
+  dependencies.
 - **`CommandPlugin`: a `fluid <name>` subcommand.** The `fluid_build.commands` group is read by
-  forge-cli 0.8.3 and later. Set `name` and `help`, override `configure(parser)` and
+  forge-cli 0.8.3 and later (lazy loading, the allow/block policy and the one-argument
+  `func(args)` form arrived with forge-cli 0.11.0). Set `name` and `help`, override `configure(parser)` and
   `run(args, logger)`, and name an instance in the entry point: forge-cli calls the loaded
   object with the CLI's subparsers.
 - **Conformance harnesses** in `fluid_sdk.testing`, one per new role, each encoding the rules
   forge-cli applies when it loads the entry point:
   - `AlertNotifierTestHarness`: the `notifier` path, plain requirements and default connection,
     known events, an entry-point name that is a kind name and not a built-in one, sample routes
-    with the shape forge-cli reads, and `kwargs` that are deterministic, literal, identifier-keyed
+    with the shape forge-cli reads (at least one passing the kind's own `check`), and `kwargs` that are deterministic, literal, identifier-keyed
     (not `context`) and leave the route alone for every event.
-  - `MaintenanceActionTestHarness`: `check` refuses bad options without quoting a value;
+  - `MaintenanceActionTestHarness`: `check` (optional; a list, not a string) refuses bad options
+    without quoting a value (the SDK's own rule);
     `statements` is deterministic, a non-empty list, leaves the options alone, and every
     statement passes `statement_problem`.
   - `CommandPluginTestHarness`: the entry point is a callable and not a class; registering adds a
     command, prints nothing and leaves the working directory and environment alone; every parser
-    has a runnable `func`; `--help` exits cleanly; importing the module is quiet.
+    has a `func` forge-cli can call; `--help` exits cleanly; importing the module is quiet.
+  - A plain class or object, or a function that returns a kind or action, works as forge-cli
+    accepts it; the subclass tests skip for it.
 - **Three example packages**: `examples/acme-chat-alerts` (a kind and a default route),
   `examples/acme-erasure-action` and `examples/acme-hello-command`, each with its entry point and
   a test that runs the harness.

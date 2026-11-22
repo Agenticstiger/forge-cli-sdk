@@ -11,12 +11,18 @@ write the same attributes by hand and register it the same way.
 | `AlertNotifier` | `fluid_build.alert_notifiers` | forge-cli 0.38.0 | A route kind for the alerts of generated DAGs |
 | `alert_route` helper | `fluid_build.alert_defaults` | forge-cli 0.38.0 | An organisation's default alert routes |
 | `MaintenanceAction` | `fluid_build.maintenance_actions` | forge-cli 0.38.0 | A step of an Iceberg table's maintenance that returns SQL |
-| `CommandPlugin` | `fluid_build.commands` | forge-cli 0.8.3 (first as 0.8.3rc1) | An extra `fluid <name>` subcommand |
+| `CommandPlugin` | `fluid_build.commands` | forge-cli 0.8.3 (first as 0.8.3rc1); lazy loading and the allow/block policy from 0.11.0 | An extra `fluid <name>` subcommand |
 
-All three groups follow the operator's plugin policy, as every plugin does: an entry point is read
-by name, never imported by `fluid --help` or by listing plugins, and `FLUID_PLUGINS_ALLOWLIST` /
-`FLUID_PLUGINS_BLOCKLIST` apply to the entry-point name before anything is imported. A plugin that
-fails to load is reported by exception type only, never by its message.
+The two alert groups and the maintenance group follow the operator's plugin policy from their first
+release: an entry point is read by name, never imported by `fluid --help` or by listing plugins,
+and `FLUID_PLUGINS_ALLOWLIST` / `FLUID_PLUGINS_BLOCKLIST` apply to the entry-point name before
+anything is imported. A plugin that fails to load is reported by exception type only, never by its
+message. For `fluid_build.commands` that policy, lazy loading and the one-argument `func(args)`
+adapter arrive with forge-cli 0.11.0 (see [CommandPlugin](#commandplugin)).
+
+forge-cli is the authority on every rule below. The SDK carries a conservative copy of them so a
+plugin can be tested without forge-cli installed; a plugin that passes the SDK's checks can still
+be refused by forge-cli, which has rules the zero-dependency SDK cannot carry.
 
 Runnable packages: [`examples/acme-chat-alerts`](../../examples/acme-chat-alerts/),
 [`examples/acme-erasure-action`](../../examples/acme-erasure-action/),
@@ -72,8 +78,8 @@ The attributes, with their defaults:
 What forge-cli enforces, and what `AlertNotifierTestHarness` checks the same way:
 
 - The entry-point name is a kind name (lower case letters, digits, `_`, `-`) and is not a built-in
-  kind's name. A plugin adds a kind and never replaces one. Two packages shipping one name are both
-  refused.
+  kind's name. A plugin adds a kind and never replaces one. (forge-cli also refuses a name two
+  packages both ship; the harness cannot see other packages, so it does not check that.)
 - `kwargs` returns literals only (str, int, float, bool, None, and lists and string-keyed dicts of
   them), keyed by Python identifiers. `context` is reserved: Airflow passes it.
 - `kwargs` is called once for each event the route sends, so a route that passes `fluid validate`
@@ -87,7 +93,8 @@ What forge-cli enforces, and what `AlertNotifierTestHarness` checks the same way
 An organisation's pack adds routes to every product's DAGs. A contract opts out with
 `alerts.defaults: false`, or replaces one by naming a route of its own the same. The entry point
 loads to a list of routes written as a contract writes them, or to a function that returns one.
-`alert_route` builds one and refuses a shape forge-cli would refuse, never quoting a value:
+`alert_route` builds one and raises `ValueError` for a shape the SDK's copy of forge-cli's route
+rules refuses, never quoting a value (forge-cli may refuse more):
 
 ```python
 from fluid_sdk import alert_route
@@ -106,8 +113,15 @@ acme = "acme_alerts.defaults:default_routes"
 
 `check_alert_route(raw)` returns the problems as a list. It checks the route's shape (keys, `name`,
 `kind`, `events`, `connection`, `severity`, the email keys, and `options`, which holds JSON values
-with no template syntax, URL or secret-named key). It cannot ask the route's kind, so forge-cli
-remains the authority. The defaults are loaded when a DAG is rendered or a contract validated, and
+with no template syntax, URL or secret-named key). A string the route gives (`name`, `kind`,
+`connection`, `format` and every option string) is also refused when it has a shape forge-cli's
+redactor masks: provider key prefixes, `Bearer`, a JWT, a PEM block, URL user info, a `key=value`
+with a credential-named key, and the incident and chat webhook URLs. Option keys follow forge-cli's
+`secret_option_key`, by whole words (`private_key`, `signingKey`, `auth`, `key` and `pwd` are
+credential names; `max_tokens` and `secretary` are not). These are vendored copies of forge-cli's
+own patterns, kept in step with it, but its redactor has more rules than a zero-dependency SDK
+can carry, and it also asks the route's kind. forge-cli remains the authority and may refuse
+more. The defaults are loaded when a DAG is rendered or a contract validated, and
 a defaults entry point that fails refuses the render.
 
 ### Testing
@@ -165,11 +179,18 @@ one. What forge-cli enforces on the statements, and what `statement_problem` and
   they are part of the plan, which the plan digest binds.
 - `sql_literal(value)` writes a string as a literal that passes, and refuses a value holding a
   quote or any of the characters above.
-- `check` returns sentences and never quotes an option value, which may be a secret.
+- `check` returns a list of sentences (forge-cli refuses a bare string). A missing `check` means no
+  problems.
+- Not quoting an option value in a `check` message is the SDK's own rule, not forge-cli's:
+  forge-cli prints the first problem as the action returns it, so a quoted value would be printed,
+  and a value may be a secret. The harness checks it.
 
 forge-cli parses statements as Spark SQL through `sqlglot`. The SDK has no dependencies, so
 `statement_problem` always applies the text rules above and parses with `sqlglot` only when it is
-installed; without it the target check is a text match. forge-cli stays the authority.
+installed. Without it the target is read by text, right after `DELETE FROM`, `UPDATE` or
+`MERGE INTO` (after a leading `WITH` clause, with backticks and spaces around dots accepted), and
+a statement that does not parse as Spark SQL, or whose target an unusual spelling hides, can
+pass; the harness warns when `sqlglot` is absent. forge-cli stays the authority and parses.
 
 ### Testing
 
@@ -187,12 +208,15 @@ class TestErase(MaintenanceActionTestHarness):
 
 ## CommandPlugin
 
-A package adds a `fluid <name>` subcommand through `fluid_build.commands`. forge-cli reads the
-entry-point names from metadata and imports a plugin only when the invoked command is not one of
-its own, so `fluid --help` and every core command import nothing from it. The loaded object is
-called with the CLI's argparse `subparsers`; each parser it adds carries a `func` default, which
-forge-cli calls as `func(args, logger)` (or `func(args)` when `func` takes one positional argument)
-and whose return value is the exit code.
+A package adds a `fluid <name>` subcommand through `fluid_build.commands`. The group appeared in
+forge-cli 0.8.3rc1 and 0.8.3. From forge-cli 0.11.0 on, forge-cli reads the entry-point names from
+metadata and imports a plugin only when the invoked command is not one of its own, so
+`fluid --help` and every core command import nothing from it; the operator's allow/block policy
+applies to the entry-point name; and `func` may take one argument. Before 0.11.0 forge-cli imported
+every command plugin when it built the parser and called `func(args, logger)`. The loaded object
+is called with the CLI's argparse `subparsers`; each parser it adds carries a `func` default,
+which forge-cli 0.11.0 and later calls as `func(args, logger)` (or `func(args)` when `func` has
+fewer than two positional parameters and no `*args`) and whose return value is the exit code.
 
 ```python
 from fluid_sdk import CommandPlugin
@@ -220,9 +244,11 @@ forge-cli calls `entry_point.load()(subparsers)`, so the entry point must name a
 instance. An instance of `CommandPlugin` is callable; the class is not, and forge-cli would call it
 with the subparsers as its constructor argument. `CommandPluginTestHarness` checks that, and that
 registering adds a command and prints nothing, leaves the working directory and environment alone,
-sets a runnable `func` on every parser, and that `--help` exits cleanly. Importing the module is
-checked the same way. Set `reserved_command_names` to the CLI's own commands to check that the
-plugin does not add one again.
+sets a runnable `func` on every parser (forge-cli's arity rule: with two or more positional
+parameters the third and later need a default), and that `--help` exits cleanly. Importing the
+module is checked the same way. forge-cli sets no pattern for a command name, so the harness has
+none either; set `reserved_command_names` to the CLI's own commands to check that the plugin does
+not add one again.
 
 ```python
 from fluid_sdk.testing import CommandPluginTestHarness

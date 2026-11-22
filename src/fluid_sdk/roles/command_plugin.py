@@ -1,17 +1,19 @@
 """The :class:`CommandPlugin` role: an extra ``fluid <name>`` subcommand.
 
 A package adds subcommands to the FLUID CLI through the ``fluid_build.commands`` entry-point
-group (forge-cli 0.8.3 and later; first available as 0.8.3rc1). The entry point loads to a
-callable that takes the CLI's argparse ``subparsers`` object and adds its parsers::
+group, which forge-cli has read since 0.8.3rc1 and 0.8.3. The entry point loads to a callable that
+takes the CLI's argparse ``subparsers`` object and adds its parsers::
 
     [project.entry-points."fluid_build.commands"]
     acme = "acme_cli.command:command"
 
-forge-cli reads the entry-point name from metadata and imports the module only when the invoked
-command is not one of its own, so ``fluid --help`` and every core command import nothing from
-the plugin. Each parser the callable adds should carry a ``func`` default: forge-cli calls
-``func(args, logger)`` (or ``func(args)`` when ``func`` takes one positional argument) and the
-return value becomes the exit code.
+From forge-cli 0.11.0 on, the entry-point name is read from metadata and the module is imported
+only when the invoked command is not one of forge-cli's own, so ``fluid --help`` and every core
+command import nothing from the plugin; the operator's allow/block policy applies to the name;
+and ``func`` may take one argument. Earlier versions imported every command plugin while building
+the parser. Each parser the callable adds should carry a ``func`` default: forge-cli calls
+``func(args, logger)`` (``func(args)`` when ``func`` has fewer than two positional parameters and
+no ``*args``) and the return value becomes the exit code.
 
 Because forge-cli calls ``entry_point.load()(subparsers)``, the loaded object must be the
 callable itself: a function, or an *instance* of :class:`CommandPlugin`, which is callable.
