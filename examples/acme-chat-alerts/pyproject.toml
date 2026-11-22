@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acme-chat-alerts"
+version = "0.1.0"
+description = "FLUID alert route kind example — send a DAG's alerts to a chat webhook, plus an organisation's default route"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = ["data-product-forge-sdk>=0.12,<1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+# The name is the route's `kind`: `kind: acme-chat` in a contract.
+[project.entry-points."fluid_build.alert_notifiers"]
+acme-chat = "acme_alerts.forge:ChatNotifier"
+
+# An organisation's default routes: every product's DAGs get them unless a contract opts out
+# with `alerts.defaults: false`.
+[project.entry-points."fluid_build.alert_defaults"]
+acme = "acme_alerts.defaults:default_routes"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

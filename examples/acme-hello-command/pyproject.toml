@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acme-hello-command"
+version = "0.1.0"
+description = "FLUID CLI command example — adds `fluid acme-hello`"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = ["data-product-forge-sdk>=0.12,<1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+# The entry point names an INSTANCE (callable with the CLI's subparsers), never the class.
+[project.entry-points."fluid_build.commands"]
+acme = "acme_cli.command:command"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
