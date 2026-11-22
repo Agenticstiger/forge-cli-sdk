@@ -16,6 +16,6 @@ def default_routes() -> List[Dict[str, Any]]:
             connection="acme_chat_oncall",
             events=["failure"],
             severity="critical",
-            options={"channel": "data-oncall"},
+            options={"channel": "ops-oncall"},
         )
     ]

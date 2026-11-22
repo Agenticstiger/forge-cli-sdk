@@ -95,7 +95,7 @@ from fluid_sdk import alert_route
 def default_routes():
     return [
         alert_route("org-oncall", "acme-chat", connection="acme_chat_oncall",
-                    events=["failure"], severity="critical", options={"channel": "data-oncall"}),
+                    events=["failure"], severity="critical", options={"channel": "ops-oncall"}),
     ]
 ```
 

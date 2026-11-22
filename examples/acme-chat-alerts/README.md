@@ -20,7 +20,7 @@ alerts:
       kind: acme-chat
       connection: acme_chat_team
       events: [failure, sla_miss]
-      options: {channel: data-team}
+      options: {channel: ops-alerts}
 ```
 
 ```bash

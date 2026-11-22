@@ -17,7 +17,7 @@ class TestChatNotifier(AlertNotifierTestHarness):
             kind="acme-chat",
             connection="acme_chat_team",
             events=("failure", "retry", "success", "sla_miss"),
-            options={"channel": "data-team"},
+            options={"channel": "ops-alerts"},
         ),
         AlertRoute(name="plain", kind="acme-chat"),  # falls back to the default connection
     ]
