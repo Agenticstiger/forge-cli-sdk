@@ -26,13 +26,19 @@ Example::
             return {
                 "title": alert.title,
                 "text": alert.text,
-                "teams_conn_id": route.connection or self.default_connection,
+                "teams_conn_id": route.connection,   # the route's own, else the default
             }
 
 Register via entry-point (the name is the route's ``kind``)::
 
     [project.entry-points."fluid_build.alert_notifiers"]
     teams = "acme_alerts.forge:TeamsNotifier"
+
+A route needs to name a connection only when the kind's ``requires_connection`` is true and its
+``default_connection`` is ``None``. When a route names none, forge-cli hands :meth:`check` and
+:meth:`kwargs` the kind's ``default_connection`` as ``route.connection``, so a kind needs no
+fallback of its own; a connection the route names wins. (forge-cli 0.39.0; 0.38.0 refused a route
+with no connection whenever ``requires_connection`` was true.)
 
 The default routes of an organisation go through a second group,
 ``fluid_build.alert_defaults``; see :func:`alert_route`.
@@ -42,7 +48,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
 
 from ._forge_secrets import looks_like_secret, secret_option_key
@@ -129,7 +135,9 @@ def normalise_kind(name: str) -> str:
 class AlertRoute:
     """One route, as forge-cli hands it to a kind (checked before :meth:`AlertNotifier.kwargs`).
 
-    ``connection`` is the Airflow connection id, never a URL or a key. ``to`` and ``sender``
+    ``connection`` is the Airflow connection id, never a URL or a key. A kind's ``check`` and
+    ``kwargs`` see the kind's ``default_connection`` here when the contract's route names none
+    (:func:`with_default_connection`). ``to`` and ``sender``
     are email addresses. ``options`` holds a plugin kind's own settings: JSON values whose
     strings carry no template syntax, no URL and no secret. ``origin`` says where the route
     came from: ``contract`` or ``org default <entry point name>``.
@@ -276,10 +284,15 @@ class AlertNotifier:
     #: The events this kind can send. A route that asks for another is refused.
     events: FrozenSet[str] = frozenset(EVENTS)
 
-    #: Whether a route of this kind must name an Airflow connection.
+    #: Whether a route of this kind must name an Airflow connection. A kind that also has a
+    #: :attr:`default_connection` never does: a route needs to name a connection only when
+    #: ``requires_connection`` is true and ``default_connection`` is ``None``.
     requires_connection: bool = True
 
-    #: The Airflow connection the notifier uses when a route names none.
+    #: The Airflow connection a route that names none uses: a plain connection id (a provider's
+    #: own default, such as ``slack_default``). :meth:`check` and :meth:`kwargs` get it as the
+    #: route's ``connection``, so the kind needs no fallback of its own. A connection the route
+    #: names wins.
     default_connection: Optional[str] = None
 
     def check(self, route: AlertRoute) -> Sequence[str]:
@@ -317,6 +330,23 @@ def key_shaped(value: str) -> bool:
         1 for a, b in pairs if a.isalpha() and b.isalpha() and a.isupper() != b.isupper()
     )
     return digit_switches >= 8 or case_switches >= 0.45 * len(value)
+
+
+def connection_required(kind: Any) -> bool:
+    """Whether a route of ``kind`` must name a connection: the kind requires one and has no
+    ``default_connection`` (forge-cli's rule). ``kind`` is a kind object or class."""
+    return bool(getattr(kind, "requires_connection", True)) and (
+        getattr(kind, "default_connection", None) is None
+    )
+
+
+def with_default_connection(kind: Any, route: AlertRoute) -> AlertRoute:
+    """``route`` as forge-cli hands it to ``kind``: when the route names no connection, its
+    ``connection`` is the kind's ``default_connection``; a connection it names is kept."""
+    default = getattr(kind, "default_connection", None)
+    if route.connection or not isinstance(default, str) or not default:
+        return route
+    return replace(route, connection=default)
 
 
 def connection_problem(value: Any) -> str:
@@ -447,6 +477,9 @@ def check_alert_route(raw: Any, where: str = "route") -> List[str]:
     patterns forge-cli uses (vendored in part). forge-cli is the authority and may refuse more:
     it also asks the route's kind, which this cannot do without loading the kind, and its
     redactor has rules this SDK cannot carry.
+
+    It does not require a ``connection``: whether a route must name one depends on its kind (see
+    :func:`connection_required`), and a kind with a ``default_connection`` fills it in.
     """
     if not isinstance(raw, Mapping):
         return [f"{where} is not a mapping"]
@@ -585,7 +618,9 @@ __all__ = [
     "SEVERITIES",
     "alert_route",
     "check_alert_route",
+    "connection_required",
     "normalise_kind",
     "notifier_problem",
     "sample_alert",
+    "with_default_connection",
 ]

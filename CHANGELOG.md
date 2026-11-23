@@ -7,6 +7,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-11-23
+
+Mirrors two rule changes in forge-cli 0.39.0.
+
+### Changed
+
+- **An alert kind's `default_connection` satisfies `requires_connection`.** A route needs to
+  name a connection only when the kind's `requires_connection` is true and its
+  `default_connection` is `None`. When a route names none, `check` and `kwargs` get the kind's
+  default as `route.connection`; a connection the route names wins. `AlertNotifierTestHarness`
+  resolves sample routes the same way, so a kind with a default no longer needs a connection on
+  every sample route. New helpers `connection_required(kind)` and
+  `with_default_connection(kind, route)` in `fluid_sdk.roles.alert_notifier`. The `AlertNotifier`
+  docstring and the plugin-group docs describe the interplay.
+- **`CommandPluginTestHarness` refuses forge-cli's core command names by default.** forge-cli
+  0.39.0 skips a command plugin that registers the name or an alias of a core command, with a
+  typed error, on every supported Python (before, the last registration won silently on
+  Python 3.10 and raised on 3.11 and later). The harness checks each added name against the
+  core commands, vendored in `fluid_sdk/roles/_forge_commands.py` from forge-cli's parser as of
+  its 0.38.0 release. `reserved_command_names` now adds names of your own on top of those;
+  `check_core_command_names = False` turns the core check off for a forge-cli before 0.39.0.
+  The `CommandPlugin` docstring states that the entry point is a callable `(subparsers) -> None`.
+
 ## [0.12.0] — 2026-11-22
 
 ### Added

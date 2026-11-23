@@ -215,6 +215,8 @@ class ChatNotifier(AlertNotifier):
         return {"message": alert.title, "chat_conn_id": route.connection}
 ```
 
+A route names a connection only when the kind requires one and has no `default_connection`; when it names none, forge-cli 0.39.0 hands the kind its `default_connection` as `route.connection`.
+
 An organisation's default routes are a second group, `fluid_build.alert_defaults`: an entry point that loads to a list of routes (or a function that returns one), built with `alert_route(...)`, which refuses the shapes the SDK's copy of forge-cli's route rules refuses (forge-cli may refuse more).
 
 Conformance: use `AlertNotifierTestHarness`. Details, attributes and rules: [plugin-groups.md](plugin-groups.md#alertnotifier).

@@ -15,7 +15,13 @@ the parser. Each parser the callable adds should carry a ``func`` default: forge
 ``func(args, logger)`` (``func(args)`` when ``func`` has fewer than two positional parameters and
 no ``*args``) and the return value becomes the exit code.
 
-Because forge-cli calls ``entry_point.load()(subparsers)``, the loaded object must be the
+forge-cli 0.39.0 refuses a plugin that registers the name or an alias of one of its own
+commands (``init``, ``validate``, ``dmm``, ...): it skips that plugin with a typed error and loads
+the others, on every supported Python. Earlier versions let argparse decide, which on Python 3.10
+let the last registration win silently and on 3.11 and later raised. ``CommandPluginTestHarness``
+checks the names against the vendored list of core commands.
+
+The entry point is a callable ``(subparsers) -> None``. Because forge-cli calls ``entry_point.load()(subparsers)``, the loaded object must be the
 callable itself: a function, or an *instance* of :class:`CommandPlugin`, which is callable.
 Do not register the class, which forge-cli would call with the subparsers as its argument.
 

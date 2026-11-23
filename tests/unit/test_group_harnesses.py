@@ -431,3 +431,87 @@ def test_an_entry_point_in_main_skips_the_import_test() -> None:
 
     in_main.__module__ = "__main__"
     _skipped(_command(in_main), "test_importing_the_module_has_no_side_effects")
+
+
+# --- a kind's default_connection satisfies requires_connection (forge-cli 0.39.0) ---------
+
+
+def test_a_route_without_a_connection_needs_a_kind_with_a_default() -> None:
+    bare = AlertRoute(name="r", kind="teams", events=("failure",))
+
+    # requires_connection is True and there is no default: the route must name one.
+    _fails(_notifier(_Good, routes=[bare]), "test_routes_are_served_events_and_name_a_connection")
+
+    class WithDefault(_Good):
+        default_connection = "teams_default"
+
+        def kwargs(self, route: AlertRoute, alert: Any) -> Mapping[str, Any]:
+            assert route.connection == "teams_default"
+            return {"title": alert.title, "conn": route.connection}
+
+    for test in (
+        "test_routes_are_served_events_and_name_a_connection",
+        "test_sample_routes_pass_check",
+        "test_check_returns_sentences_and_does_not_raise",
+        "test_kwargs_are_deterministic_literals_for_every_event",
+        "test_kwargs_do_not_modify_the_route",
+    ):
+        getattr(_notifier(WithDefault, routes=[bare]), test)()
+
+
+def test_a_named_connection_wins_over_the_default() -> None:
+    from fluid_sdk.roles.alert_notifier import connection_required, with_default_connection
+
+    class WithDefault(_Good):
+        default_connection = "teams_default"
+
+    kind = WithDefault()
+    assert with_default_connection(kind, ROUTE).connection == "c"
+    assert not connection_required(kind)
+    assert connection_required(_Good())
+
+    class NoConnectionNeeded(_Good):
+        requires_connection = False
+
+    assert not connection_required(NoConnectionNeeded())
+
+
+# --- core command names (forge-cli 0.39.0) ------------------------------------------------
+
+
+def _registers(*names: str) -> Any:
+    def entry(sp: Any) -> None:
+        for n in names:
+            sp.add_parser(n).set_defaults(func=lambda args: 0)
+
+    return entry
+
+
+def test_a_core_command_name_or_alias_fails_the_harness_by_default() -> None:
+    for name in ("validate", "dmm"):
+        with pytest.raises(AssertionError, match="core forge-cli command"):
+            _command(_registers(name)).test_command_names_are_not_reserved()
+    _command(_registers("acme-hello")).test_command_names_are_not_reserved()
+
+
+def test_extra_reserved_names_add_to_the_core_list() -> None:
+    _fails(
+        _command(_registers("acme-hello"), reserved=("acme-hello",)),
+        "test_command_names_are_not_reserved",
+    )
+    _fails(
+        _command(_registers("plan"), reserved=("acme-hello",)),
+        "test_command_names_are_not_reserved",
+    )
+
+
+def test_the_core_check_can_be_turned_off_for_an_older_forge() -> None:
+    harness = _command(_registers("validate"))
+    type(harness).check_core_command_names = False
+    harness.test_command_names_are_not_reserved()
+
+
+def test_the_vendored_core_list_has_the_pipeline_commands() -> None:
+    from fluid_sdk.roles._forge_commands import FORGE_CORE_COMMANDS
+
+    assert {"validate", "plan", "apply", "init", "forge", "dmm", "opds"} <= FORGE_CORE_COMMANDS
