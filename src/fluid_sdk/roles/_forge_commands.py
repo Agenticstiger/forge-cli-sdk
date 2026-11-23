@@ -1,7 +1,7 @@
 """The names forge-cli's own commands take, vendored so the SDK can refuse a plugin that uses one.
 
 Source: the top-level subcommands and aliases of ``fluid_build.cli.build_parser()`` at forge-cli
-commit ``cc52b755`` (the v0.38.0 release; main when this was written). forge-cli 0.39.0 refuses
+main after forge-cli PR #1065, the change released in forge-cli 0.39.0, which refuses
 a ``fluid_build.commands`` plugin that registers one of these names, with a typed error: it skips
 that plugin and loads the others, on every supported Python. Before that, argparse let the last
 registration win on Python 3.10 and raised on 3.11 and later.
