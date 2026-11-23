@@ -28,6 +28,7 @@ import unittest
 import warnings
 from typing import Any, Callable, ClassVar, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
+from ..roles._forge_commands import FORGE_CORE_COMMANDS
 from ..roles.alert_notifier import (
     BUILTIN_KINDS,
     EVENTS,
@@ -35,10 +36,12 @@ from ..roles.alert_notifier import (
     AlertNotifier,
     AlertRoute,
     check_alert_route,
+    connection_required,
     kwargs_problem,
     normalise_kind,
     notifier_problem,
     sample_alert,
+    with_default_connection,
 )
 from ..roles.maintenance_action import MaintenanceAction, statement_problem
 
@@ -128,9 +131,10 @@ class AlertNotifierTestHarness:
         """The sample routes the kind's own ``check`` accepts, with their positions."""
         kind = self.get_notifier()
         check = getattr(kind, "check", None)
+        resolved = [with_default_connection(kind, r) for r in self.sample_routes]
         return [
             (i, r)
-            for i, r in enumerate(self.sample_routes)
+            for i, r in enumerate(resolved)
             if not callable(check) or not _alert_problems(check(r))
         ]
 
@@ -186,10 +190,11 @@ class AlertNotifierTestHarness:
             assert (
                 not missing
             ), f"sample_routes[{i}] asks for {', '.join(missing)}, which this kind does not send"
-            if getattr(kind, "requires_connection", True):
-                assert (
-                    route.connection
-                ), f"sample_routes[{i}] must name a connection: the kind requires one"
+            if connection_required(kind):
+                assert route.connection, (
+                    f"sample_routes[{i}] must name a connection: the kind requires one and has "
+                    "no default_connection"
+                )
 
     def test_sample_routes_have_the_shape_forge_reads(self) -> None:
         for i, route in enumerate(self.sample_routes):
@@ -214,10 +219,12 @@ class AlertNotifierTestHarness:
             assert not problems, "forge-cli would not read this route: " + "; ".join(problems)
 
     def test_check_returns_sentences_and_does_not_raise(self) -> None:
-        check = getattr(self.get_notifier(), "check", None)
+        kind = self.get_notifier()
+        check = getattr(kind, "check", None)
         if not callable(check):
             return
         for route in self.sample_routes:
+            route = with_default_connection(kind, route)
             found = _alert_problems(check(route))
             assert all(isinstance(p, str) for p in found), "check() must return sentences (str)"
 
@@ -433,13 +440,19 @@ class CommandPluginTestHarness:
     Required: ``command_entry_point``: the object the entry point names, which forge-cli
     loads and calls with the CLI's subparsers (a function, or an instance of
     :class:`~fluid_sdk.CommandPlugin`; not the class). Optional: ``expected_commands`` (the
-    subcommand names it adds) and ``reserved_command_names`` (the CLI's own commands, which a
-    plugin must not add again).
+    subcommand names it adds) and ``reserved_command_names`` (names of your own to keep free,
+    on top of forge-cli's core commands, which are always checked).
+
+    forge-cli 0.39.0 refuses a plugin that registers a core command's name or alias, skips that
+    plugin and loads the others. The core names are vendored in
+    :data:`fluid_sdk.roles._forge_commands.FORGE_CORE_COMMANDS`. Set
+    ``check_core_command_names = False`` only to test against a forge-cli before 0.39.0.
     """
 
     command_entry_point: ClassVar[Any]
     expected_commands: ClassVar[Tuple[str, ...]] = ()
     reserved_command_names: ClassVar[Tuple[str, ...]] = ()
+    check_core_command_names: ClassVar[bool] = True
 
     def _entry_point(self) -> Any:
         """The configured object, undisturbed by Python's method binding of a plain function."""
@@ -472,9 +485,15 @@ class CommandPluginTestHarness:
     def test_command_names_are_not_reserved(self) -> None:
         _, _, added = self._register()
         for name in added:
+            if self.check_core_command_names:
+                assert name not in FORGE_CORE_COMMANDS, (
+                    f"command {name!r} is a core forge-cli command or alias: forge-cli 0.39.0 "
+                    "refuses the plugin (and an older forge-cli lets one registration shadow "
+                    "the other); choose another name"
+                )
             assert (
                 name not in self.reserved_command_names
-            ), f"command {name!r} is one of the CLI's own commands"
+            ), f"command {name!r} is in reserved_command_names"
 
     def test_every_command_has_a_runnable_func(self) -> None:
         _, sp, added = self._register()

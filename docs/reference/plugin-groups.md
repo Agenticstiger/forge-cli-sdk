@@ -45,7 +45,7 @@ from fluid_sdk import Alert, AlertNotifier, AlertRoute
 class ChatNotifier(AlertNotifier):
     notifier = "acme_alerts.notifiers:ChatNotifier"   # what the DAG imports
     requirements = ("acme-chat-alerts>=0.1",)         # what Airflow must install
-    requires_connection = False
+    requires_connection = True              # the default below satisfies it
     default_connection = "acme_chat_default"
 
     def check(self, route: AlertRoute):
@@ -54,7 +54,7 @@ class ChatNotifier(AlertNotifier):
     def kwargs(self, route: AlertRoute, alert: Alert):
         return {
             "message": alert.title,
-            "chat_conn_id": route.connection or self.default_connection,
+            "chat_conn_id": route.connection,   # the route's own, else default_connection
         }
 ```
 
@@ -72,8 +72,8 @@ The attributes, with their defaults:
 | `supports_async` | `False` | Whether the notifier implements `async_notify`. Airflow 3 has no SLAs, so an `sla_miss` route alerts there through a deadline alert, which runs the notifier in the triggerer and needs it |
 | `async_requirements` | `()` | What the triggerer needs, when newer than `requirements` |
 | `events` | all four | The events the kind can send (`failure`, `retry`, `success`, `sla_miss`). A route that asks for another is refused |
-| `requires_connection` | `True` | Whether a route must name an Airflow connection. `default_connection` does not satisfy this: a kind whose routes may omit the connection sets it to `False` |
-| `default_connection` | `None` | The connection the notifier uses when a route names none |
+| `requires_connection` | `True` | Whether a route must name an Airflow connection. A route needs to name one only when this is `True` and `default_connection` is `None` (forge-cli 0.39.0; 0.38.0 required it whenever this was `True`) |
+| `default_connection` | `None` | The connection a route that names none uses. forge-cli 0.39.0 hands `check` and `kwargs` this as `route.connection`, so the kind needs no fallback; a connection the route names wins |
 
 What forge-cli enforces, and what `AlertNotifierTestHarness` checks the same way:
 
@@ -247,8 +247,12 @@ registering adds a command and prints nothing, leaves the working directory and 
 sets a runnable `func` on every parser (forge-cli's arity rule: with two or more positional
 parameters the third and later need a default), and that `--help` exits cleanly. Importing the
 module is checked the same way. forge-cli sets no pattern for a command name, so the harness has
-none either; set `reserved_command_names` to the CLI's own commands to check that the plugin does
-not add one again.
+none either. forge-cli 0.39.0 refuses a plugin that registers the name or an alias of one of its own
+commands, skipping that plugin and loading the others (earlier, argparse let the last registration
+win on Python 3.10 and raised on 3.11 and later); the harness checks every added name against the
+core command names the SDK vendors from forge-cli. `reserved_command_names` adds names of your own on
+top of those, and `check_core_command_names = False` turns the core check off for a forge-cli before
+0.39.0. The entry point is a callable `(subparsers) -> None`.
 
 ```python
 from fluid_sdk.testing import CommandPluginTestHarness

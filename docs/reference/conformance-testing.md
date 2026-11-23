@@ -88,7 +88,7 @@ Set `notifier_class` (a class built with no arguments, an instance, or a functio
 
 - The kind is one forge-cli accepts: a `notifier` path of dotted identifiers (`module.path:Class`), a callable `kwargs`, plain pip `requirements` / `async_requirements`, a plain `default_connection`, and `events` drawn from `failure`, `retry`, `success`, `sla_miss`.
 - The entry-point name is a kind name and not a built-in kind's name (`email`, `slack`, `webhook`, `pagerduty`).
-- Each sample route has the shape forge-cli reads (including `to`, `from` and `format`, which only built-in kinds read), asks only for events the kind sends, and names a connection when the kind requires one. At least one sample route passes the kind's own `check`. Assertion messages name `sample_routes[i]`, never a route value.
+- Each sample route has the shape forge-cli reads (including `to`, `from` and `format`, which only built-in kinds read), asks only for events the kind sends, and names a connection when the kind requires one and has no `default_connection` (`check` and `kwargs` see the default on a route that names none, as in forge-cli 0.39.0). At least one sample route passes the kind's own `check`. Assertion messages name `sample_routes[i]`, never a route value.
 - `check`, when the kind has one, returns sentences and does not raise. A missing `check` is no problems, as in forge-cli.
 - A plain class or object that does not subclass `AlertNotifier` skips the subclass test.
 - For every event of every sample route, `kwargs` is deterministic, returns Python-identifier keys (not `context`) with literal values, and does not modify the route.
@@ -108,7 +108,7 @@ Set `command_entry_point` (the function or instance the entry point names; not t
 
 - The entry point is callable and is not a class.
 - Registering with a fresh `subparsers` adds at least one command, prints nothing, and leaves the working directory and environment alone.
-- Command names are not in `reserved_command_names` (forge-cli sets no name pattern).
+- Command names are not a core forge-cli command or alias (the list is vendored; forge-cli 0.39.0 refuses such a plugin) and not in `reserved_command_names`, which adds your own names. `check_core_command_names = False` skips the core check for a forge-cli before 0.39.0.
 - Every parser has a callable `func` default that forge-cli can call: `(args)` or `(args, logger)`, with a third positional parameter only when it has a default.
 - `<command> --help` exits cleanly.
 - Importing the module prints nothing and changes no environment or working directory.
